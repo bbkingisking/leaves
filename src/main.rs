@@ -594,18 +594,10 @@ fn main() -> Result<(), io::Error> {
                     let version = app.get_current_version();
                     let text = render_poem_text(version);
                     let lines: Vec<&str> = text.lines().collect();
-
+                    
                     let viewport_height = app.viewport_height.unwrap_or(chunks[0].height.saturating_sub(2)) as usize;
                     let has_scroll = lines.len() > viewport_height;
-
-                    let visible_text = lines
-                        .iter()
-                        .skip(app.scroll_position as usize)
-                        .take(viewport_height)
-                        .copied()
-                        .collect::<Vec<&str>>()
-                        .join("\n");
-
+                    
                     let title = Line::from(vec![
                         Span::styled(&version.author, Style::default().fg(Color::Yellow)),
                         Span::raw(" - "),
@@ -616,38 +608,70 @@ fn main() -> Result<(), io::Error> {
                         .title(title)
                         .borders(Borders::ALL);
 
+                    // Create inner area for content and scrollbar
+                    let inner_area = poem_block.inner(chunks[0]);
+                    let inner_chunks = Layout::default()
+                        .direction(Direction::Horizontal)
+                        .constraints([
+                            Constraint::Min(1),
+                            Constraint::Length(1),
+                        ].as_ref())
+                        .split(inner_area);
+
+                    // Create scroll indicator if needed
+                    let scroll_indicator = if has_scroll {
+                        let total_lines = lines.len() as f64;
+                        let visible_lines = viewport_height as f64;
+                        let scroll_pos = app.scroll_position as f64;
+                        
+                        let scroll_height = ((visible_lines / total_lines) * (viewport_height - 2) as f64).max(1.0) as usize;
+                        let max_scroll = total_lines - visible_lines;
+                        let scroll_pos = if max_scroll > 0.0 {
+                            ((scroll_pos / max_scroll) * (viewport_height - scroll_height - 2) as f64) + 1.0
+                        } else {
+                            1.0
+                        } as usize;
+                        
+                        let mut indicator = vec!["│"; viewport_height];
+                        indicator[0] = "▲";
+                        indicator[viewport_height - 1] = "▼";
+                        for i in scroll_pos..scroll_pos + scroll_height {
+                            if i > 0 && i < viewport_height - 1 {
+                                indicator[i] = "▐";
+                            }
+                        }
+                        indicator.join("\n")
+                    } else {
+                        String::new()
+                    };
+                    let visible_text = lines
+                        .iter()
+                        .skip(app.scroll_position as usize)
+                        .take(viewport_height)
+                        .copied()
+                        .collect::<Vec<&str>>()
+                        .join("\n");
+
                     let alignment = if version.rtl.unwrap_or(false) {
                         ratatui::layout::Alignment::Right
                     } else {
                         ratatui::layout::Alignment::Left
                     };
 
+                    // Render block first
+                    f.render_widget(poem_block, chunks[0]);
+
+                    // Then render content and scrollbar inside it
                     let poem_para = Paragraph::new(visible_text)
-                        .block(poem_block)
                         .style(Style::default().fg(Color::White))
                         .alignment(alignment);
+                    f.render_widget(poem_para, inner_chunks[0]);
 
-                    f.render_widget(poem_para, chunks[0]);
-
-                    // Update status bar items based on current state
-                    let mut items = vec![
-                        ("m", "menu"),
-                        ("←/→", "navigate poems")
-                    ];
-                    
                     if has_scroll {
-                        items.push(("↑/↓", "scroll"));
+                        let scrollbar = Paragraph::new(scroll_indicator)
+                            .style(Style::default().fg(Color::DarkGray));
+                        f.render_widget(scrollbar, inner_chunks[1]);
                     }
-                    
-                    if app.filtered_poems.is_some() {
-                        items.push(("backspace", "back to list"));
-                    }
-                    
-                    if !app.poems[app.current_poem].other_versions.is_empty() {
-                        items.push(("s", "switch version"));
-                    }
-                    
-                    render_status_bar(items);
                 },
                 AppMode::Menu => {
                     let items = vec![
