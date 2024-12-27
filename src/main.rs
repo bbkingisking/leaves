@@ -46,7 +46,8 @@ struct App {
     current_version: String,
     mode: AppMode,
     previous_mode: Option<AppMode>,
-
+    scroll_position: u16,
+    viewport_height: Option<u16>,  // Add this field
     author_counts: HashMap<String, usize>,
     author_list_state: ListState,
 
@@ -102,6 +103,8 @@ impl App {
             current_version: "canonical".to_string(),
             mode: AppMode::Menu,
             previous_mode: None,
+            scroll_position: 0, 
+            viewport_height: None,
             author_counts,
             author_list_state: list_state,
             language_counts,
@@ -342,6 +345,18 @@ impl App {
         "Filtered Poems".to_string()
     }
 
+    fn scroll_up(&mut self) {
+        if self.scroll_position > 0 {
+            self.scroll_position = self.scroll_position.saturating_sub(1);
+        }
+    }
+
+    fn scroll_down(&mut self, max_scroll: u16) {
+        if self.scroll_position < max_scroll {
+            self.scroll_position = self.scroll_position.saturating_add(1);
+        }
+    }
+
     fn next_poem(&mut self) {
         match &self.filtered_poems {
             Some(indices) => {
@@ -437,6 +452,7 @@ impl App {
 
     fn set_mode(&mut self, new_mode: AppMode) {
         self.mode = new_mode;
+        self.scroll_position = 0; 
     }
 }
 
@@ -534,12 +550,25 @@ fn main() -> Result<(), io::Error> {
                 ].as_ref())
                 .split(f.size());
 
+            if let AppMode::Viewing = app.mode {
+                app.viewport_height = Some(chunks[0].height.saturating_sub(2));
+            }
+
            let status_bar = match app.mode {
                 AppMode::Viewing => {
                     let mut items = vec![
                         ("m", "menu"),
                         ("←/→", "navigate poems")
                     ];
+                    
+                    let text = render_poem_text(app.get_current_version());
+                    let lines = text.lines().count();
+                    let viewport_height = chunks[0].height as usize - 2;
+                    
+                    if lines > viewport_height {
+                        items.push(("↑/↓", "scroll"));
+                    }
+                    
                     if app.filtered_poems.is_some() {
                         items.push(("backspace", "back to list"));
                     }
@@ -564,12 +593,25 @@ fn main() -> Result<(), io::Error> {
                 AppMode::Viewing => {
                     let version = app.get_current_version();
                     let text = render_poem_text(version);
+                    let lines: Vec<&str> = text.lines().collect();
+
+                    let viewport_height = app.viewport_height.unwrap_or(chunks[0].height.saturating_sub(2)) as usize;
+                    let has_scroll = lines.len() > viewport_height;
+
+                    let visible_text = lines
+                        .iter()
+                        .skip(app.scroll_position as usize)
+                        .take(viewport_height)
+                        .copied()
+                        .collect::<Vec<&str>>()
+                        .join("\n");
 
                     let title = Line::from(vec![
                         Span::styled(&version.author, Style::default().fg(Color::Yellow)),
                         Span::raw(" - "),
                         Span::raw(&version.title)
                     ]);
+                    
                     let poem_block = Block::default()
                         .title(title)
                         .borders(Borders::ALL);
@@ -580,12 +622,32 @@ fn main() -> Result<(), io::Error> {
                         ratatui::layout::Alignment::Left
                     };
 
-                    let poem_para = Paragraph::new(text)
+                    let poem_para = Paragraph::new(visible_text)
                         .block(poem_block)
                         .style(Style::default().fg(Color::White))
                         .alignment(alignment);
 
                     f.render_widget(poem_para, chunks[0]);
+
+                    // Update status bar items based on current state
+                    let mut items = vec![
+                        ("m", "menu"),
+                        ("←/→", "navigate poems")
+                    ];
+                    
+                    if has_scroll {
+                        items.push(("↑/↓", "scroll"));
+                    }
+                    
+                    if app.filtered_poems.is_some() {
+                        items.push(("backspace", "back to list"));
+                    }
+                    
+                    if !app.poems[app.current_poem].other_versions.is_empty() {
+                        items.push(("s", "switch version"));
+                    }
+                    
+                    render_status_bar(items);
                 },
                 AppMode::Menu => {
                     let items = vec![
@@ -734,6 +796,14 @@ fn main() -> Result<(), io::Error> {
                     _ => {}
                 },
                 KeyCode::Down => match app.mode {
+                    AppMode::Viewing => {
+                        let text = render_poem_text(app.get_current_version());
+                        let lines = text.lines().count();
+                        if let Some(viewport_height) = app.viewport_height {
+                            let max_scroll = lines.saturating_sub(viewport_height as usize) as u16;
+                            app.scroll_down(max_scroll);
+                        }
+                    },
                     AppMode::AuthorList => app.next_author(),
                     AppMode::LanguageList => app.next_language(),
                     AppMode::TitleList => app.next_title(),
@@ -744,9 +814,11 @@ fn main() -> Result<(), io::Error> {
                             app.menu_state.select(Some(new_index));
                         }
                     }
-                    _ => {}
                 },
                 KeyCode::Up => match app.mode {
+                    AppMode::Viewing => {
+                        app.scroll_up();
+                    },
                     AppMode::AuthorList => app.previous_author(),
                     AppMode::LanguageList => app.previous_language(),
                     AppMode::TitleList => app.previous_title(),
@@ -757,7 +829,6 @@ fn main() -> Result<(), io::Error> {
                             app.menu_state.select(Some(new_index));
                         }
                     }
-                    _ => {}
                 },
                 KeyCode::Enter => match app.mode {
                     AppMode::AuthorList => app.select_current_author(),
