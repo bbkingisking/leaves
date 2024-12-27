@@ -204,6 +204,23 @@ fn render_poem_text(version: &Version) -> String {
     }
 }
 
+fn render_status_bar() -> Paragraph<'static> {
+    Paragraph::new(Line::from(vec![
+        Span::styled("m", Style::default().fg(Color::Yellow)),
+        Span::raw(": menu | "),
+        Span::styled("←/→", Style::default().fg(Color::Yellow)),
+        Span::raw(": navigate poems | "),
+        Span::styled("backspace", Style::default().fg(Color::Yellow)),
+        Span::raw(": back | "),
+        Span::styled("q", Style::default().fg(Color::Yellow)),
+        Span::raw(": quit | "),
+        Span::styled("s", Style::default().fg(Color::Yellow)),
+        Span::raw(": switch version"),
+    ]))
+    .alignment(ratatui::layout::Alignment::Left)
+    .block(Block::default())
+}
+
 fn main() -> Result<(), io::Error> {
     enable_raw_mode()?;
     let stdout = io::stdout();
@@ -217,7 +234,10 @@ fn main() -> Result<(), io::Error> {
         terminal.draw(|f| {
             let chunks = Layout::default()
                 .direction(Direction::Vertical)
-                .constraints([Constraint::Min(0)].as_ref())
+                .constraints([
+                    Constraint::Min(1),
+                    Constraint::Length(1),  // Height for status bar
+                ].as_ref())
                 .split(f.size());
 
             match app.mode {
@@ -278,6 +298,7 @@ fn main() -> Result<(), io::Error> {
                     f.render_stateful_widget(author_list, chunks[0], &mut app.author_list_state);
                 }
             }
+            f.render_widget(render_status_bar(), chunks[1]);
         })?;
 
         if let Event::Key(key) = event::read()? {
