@@ -322,21 +322,25 @@ fn render_poem_text(version: &Version) -> String {
     }
 }
 
-fn render_status_bar() -> Paragraph<'static> {
-    Paragraph::new(Line::from(vec![
-        Span::styled("m", Style::default().fg(Color::Yellow)),
-        Span::raw(": menu | "),
-        Span::styled("←/→", Style::default().fg(Color::Yellow)),
-        Span::raw(": navigate poems | "),
-        Span::styled("backspace", Style::default().fg(Color::Yellow)),
-        Span::raw(": back | "),
-        Span::styled("q", Style::default().fg(Color::Yellow)),
-        Span::raw(": quit | "),
-        Span::styled("s", Style::default().fg(Color::Yellow)),
-        Span::raw(": switch version"),
-    ]))
-    .alignment(ratatui::layout::Alignment::Left)
-    .block(Block::default())
+fn render_status_bar(items: Vec<(&str, &str)>) -> Paragraph<'static> {
+    let spans: Vec<Span<'static>> = items.into_iter()
+        .flat_map(|(key, desc)| vec![
+            Span::styled(key.to_string(), Style::default().fg(Color::Yellow)),
+            Span::raw(": ".to_string()),
+            Span::raw(desc.to_string()),
+            Span::raw(" | ".to_string()),
+        ])
+        .collect();
+
+   // Remove trailing separator
+   let mut spans = spans;
+   if !spans.is_empty() {
+       spans.pop();
+   }
+
+   Paragraph::new(Line::from(spans))
+       .alignment(ratatui::layout::Alignment::Left)
+       .block(Block::default())
 }
 
 fn main() -> Result<(), io::Error> {
@@ -357,6 +361,32 @@ fn main() -> Result<(), io::Error> {
                     Constraint::Length(1),  // Height for status bar
                 ].as_ref())
                 .split(f.size());
+
+           let status_bar = match app.mode {
+               AppMode::Viewing => {
+                   let mut items = vec![
+                       ("m", "menu"),
+                       ("←/→", "navigate poems")
+                   ];
+                   if app.filtered_poems.is_some() {
+                       items.push(("backspace", "back"));
+                   }
+                   if !app.poems[app.current_poem].other_versions.is_empty() {
+                       items.push(("s", "switch version"));
+                   }
+                   render_status_bar(items)
+               },
+               AppMode::Menu => render_status_bar(vec![
+                   ("q", "quit"),
+                   ("↑/↓", "select"),
+                   ("enter", "choose")
+               ]),
+               AppMode::AuthorList | AppMode::LanguageList => render_status_bar(vec![
+                   ("↑/↓", "select"),
+                   ("enter", "choose"),
+                   ("backspace", "back")
+               ]),
+           };
 
             match app.mode {
                 AppMode::Viewing => {
@@ -433,7 +463,7 @@ fn main() -> Result<(), io::Error> {
                     f.render_stateful_widget(language_list, chunks[0], &mut app.language_list_state);
                 }
             }
-            f.render_widget(render_status_bar(), chunks[1]);
+        f.render_widget(status_bar, chunks[1]);
         })?;
 
         if let Event::Key(key) = event::read()? {
