@@ -37,6 +37,7 @@ enum AppMode {
     AuthorList,
     LanguageList,
     TitleList,
+    FilteredList,
 }
 
 struct App {
@@ -53,6 +54,8 @@ struct App {
     language_list_state: ListState,
 
     title_list_state: ListState,
+
+    filtered_list_state: ListState,
 
     menu_state: ListState,
     filtered_poems: Option<Vec<usize>>,
@@ -90,6 +93,9 @@ impl App {
         let mut title_list_state = ListState::default();
         title_list_state.select(Some(0));
 
+        let mut filtered_list_state = ListState::default();
+        filtered_list_state.select(Some(0));
+
         Self {
             poems,
             current_poem: 0,
@@ -102,6 +108,7 @@ impl App {
             language_list_state,
             menu_state,
             title_list_state,
+            filtered_list_state,
             filtered_poems: None,
         }
     }
@@ -223,8 +230,9 @@ impl App {
                         self.current_poem = indices[0];
                     }
                 }
+                self.filtered_list_state.select(Some(0));
                 self.previous_mode = Some(AppMode::AuthorList);
-                self.mode = AppMode::Viewing;
+                self.mode = AppMode::FilteredList;
             }
         }
     }
@@ -260,31 +268,35 @@ impl App {
     }
 
     fn select_current_language(&mut self) {
-       if let Some(index) = self.language_list_state.selected() {
-           let languages = self.get_sorted_languages();
-           if let Some(language) = languages.get(index) {
-               let mut filtered = Vec::new();
-               for (i, poem) in self.poems.iter().enumerate() {
-                   if poem.canonical.language == *language {
-                       filtered.push((i, "canonical"));
-                   }
-                   for (version_key, version) in &poem.other_versions {
-                       if version.language == *language {
-                           filtered.push((i, version_key));
-                       }
-                   }
-               }
-               
-               self.filtered_poems = Some(filtered.iter().map(|(i, _)| *i).collect());
-               if !filtered.is_empty() {
-                   self.current_poem = filtered[0].0;
-                   self.current_version = filtered[0].1.to_string();
-               }
-               self.previous_mode = Some(AppMode::LanguageList);
-               self.mode = AppMode::Viewing;
-           }
-       }
+        if let Some(index) = self.language_list_state.selected() {
+            let languages = self.get_sorted_languages();
+            if let Some(language) = languages.get(index) {
+                // Store both index and version key for poems in the selected language
+                let mut filtered_with_versions = Vec::new();
+                for (i, poem) in self.poems.iter().enumerate() {
+                    if poem.canonical.language == *language {
+                        filtered_with_versions.push((i, "canonical".to_string()));
+                    }
+                    for (version_key, version) in &poem.other_versions {
+                        if version.language == *language {
+                            filtered_with_versions.push((i, version_key.clone()));
+                        }
+                    }
+                }
+                
+                if !filtered_with_versions.is_empty() {
+                    self.current_poem = filtered_with_versions[0].0;
+                    self.current_version = filtered_with_versions[0].1.clone();
+                }
+                // Store just the indices in filtered_poems for the list view
+                self.filtered_poems = Some(filtered_with_versions.iter().map(|(i, _)| *i).collect());
+                self.filtered_list_state.select(Some(0));
+                self.previous_mode = Some(AppMode::LanguageList);
+                self.mode = AppMode::FilteredList;
+            }
+        }
     }
+
 
     fn next_poem(&mut self) {
         match &self.filtered_poems {
@@ -314,6 +326,67 @@ impl App {
                 } else {
                     self.current_poem - 1
                 };
+            }
+        }
+    }
+
+    fn next_filtered(&mut self) {
+        if let Some(indices) = &self.filtered_poems {
+            let i = match self.filtered_list_state.selected() {
+                Some(i) => (i + 1) % indices.len(),
+                None => 0,
+            };
+            self.filtered_list_state.select(Some(i));
+        }
+    }
+
+    fn previous_filtered(&mut self) {
+        if let Some(indices) = &self.filtered_poems {
+            let i = match self.filtered_list_state.selected() {
+                Some(i) => {
+                    if i == 0 {
+                        indices.len() - 1
+                    } else {
+                        i - 1
+                    }
+                }
+                None => 0,
+            };
+            self.filtered_list_state.select(Some(i));
+        }
+    }
+
+    fn select_current_filtered(&mut self) {
+        if let Some(index) = self.filtered_list_state.selected() {
+            if let Some(indices) = &self.filtered_poems {
+                if let Some(&poem_index) = indices.get(index) {
+                    self.current_poem = poem_index;
+                    // When coming from language list, we need to find the correct version
+                    if let Some(AppMode::LanguageList) = self.previous_mode {
+                        if let Some(selected_lang_idx) = self.language_list_state.selected() {
+                            let languages = self.get_sorted_languages();
+                            if let Some(language) = languages.get(selected_lang_idx) {
+                                // First check if canonical version matches
+                                let poem = &self.poems[poem_index];
+                                if poem.canonical.language == *language {
+                                    self.current_version = "canonical".to_string();
+                                } else {
+                                    // Otherwise find the matching version
+                                    for (version_key, version) in &poem.other_versions {
+                                        if version.language == *language {
+                                            self.current_version = version_key.clone();
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    } else {
+                        // For other modes (like author list), default to canonical
+                        self.current_version = "canonical".to_string();
+                    }
+                    self.mode = AppMode::Viewing;
+                }
             }
         }
     }
@@ -418,25 +491,25 @@ fn main() -> Result<(), io::Error> {
                 .split(f.size());
 
            let status_bar = match app.mode {
-               AppMode::Viewing => {
-                   let mut items = vec![
-                       ("m", "menu"),
-                       ("←/→", "navigate poems")
-                   ];
-                   if app.filtered_poems.is_some() {
-                       items.push(("backspace", "back"));
-                   }
-                   if !app.poems[app.current_poem].other_versions.is_empty() {
-                       items.push(("s", "switch version"));
-                   }
-                   render_status_bar(items)
-               },
+                AppMode::Viewing => {
+                    let mut items = vec![
+                        ("m", "menu"),
+                        ("←/→", "navigate poems")
+                    ];
+                    if app.filtered_poems.is_some() {
+                        items.push(("backspace", "back to list"));
+                    }
+                    if !app.poems[app.current_poem].other_versions.is_empty() {
+                        items.push(("s", "switch version"));
+                    }
+                    render_status_bar(items)
+                },
                AppMode::Menu => render_status_bar(vec![
                    ("q", "quit"),
                    ("↑/↓", "select"),
                    ("enter", "choose")
                ]),
-               AppMode::AuthorList | AppMode::LanguageList | AppMode::TitleList => render_status_bar(vec![
+               AppMode::AuthorList | AppMode::LanguageList | AppMode::TitleList | AppMode::FilteredList => render_status_bar(vec![
                    ("↑/↓", "select"),
                    ("enter", "choose"),
                    ("backspace", "back")
@@ -533,6 +606,25 @@ fn main() -> Result<(), io::Error> {
 
                     f.render_stateful_widget(language_list, chunks[0], &mut app.language_list_state);
                 }
+                AppMode::FilteredList => {
+                    if let Some(indices) = &app.filtered_poems {
+                        let items: Vec<ListItem> = indices.iter()
+                            .map(|&idx| {
+                                let poem = &app.poems[idx];
+                                ListItem::new(format!("{} - {}", poem.canonical.author, poem.canonical.title))
+                            })
+                            .collect();
+
+                        let filtered_list = List::new(items)
+                            .block(Block::default()
+                                .title(Span::styled("Filtered Poems", Style::default().fg(Color::Yellow)))
+                                .borders(Borders::ALL))
+                            .style(Style::default().fg(Color::White))
+                            .highlight_style(Style::default().fg(Color::Black).bg(Color::White));
+
+                        f.render_stateful_widget(filtered_list, chunks[0], &mut app.filtered_list_state);
+                    }
+                }
             }
             f.render_widget(status_bar, chunks[1]);
         })?;
@@ -542,22 +634,20 @@ fn main() -> Result<(), io::Error> {
                 KeyCode::Char('q') => break,
                 KeyCode::Backspace => {
                     match app.mode {
+                        AppMode::Viewing => {
+                            if app.filtered_poems.is_some() {
+                                app.mode = AppMode::FilteredList;
+                            }
+                        },
+                        AppMode::FilteredList => {
+                            app.mode = app.previous_mode.clone().unwrap_or(AppMode::Menu);
+                        },
                         AppMode::AuthorList | AppMode::LanguageList | AppMode::TitleList => {
                             app.set_mode(AppMode::Menu)
                         },
-                        AppMode::Viewing => {
-                            if app.filtered_poems.is_some() {
-                                app.set_mode(match app.previous_mode.as_ref().unwrap_or(&AppMode::Menu) {
-                                    AppMode::AuthorList => AppMode::AuthorList,
-                                    AppMode::LanguageList => AppMode::LanguageList,
-                                    AppMode::TitleList => AppMode::TitleList,
-                                    _ => AppMode::Menu,
-                                });
-                            }
-                        }
                         _ => {}
                     }
-                },                
+                },              
                 KeyCode::Char('m') => {
                     app.mode = AppMode::Menu;
                 },
@@ -577,6 +667,7 @@ fn main() -> Result<(), io::Error> {
                     AppMode::AuthorList => app.next_author(),
                     AppMode::LanguageList => app.next_language(),
                     AppMode::TitleList => app.next_title(),
+                    AppMode::FilteredList => app.next_filtered(),
                     AppMode::Menu => {
                         if let Some(i) = app.menu_state.selected() {
                             let new_index = (i + 1) % 3; // Now 3 menu items
@@ -589,6 +680,7 @@ fn main() -> Result<(), io::Error> {
                     AppMode::AuthorList => app.previous_author(),
                     AppMode::LanguageList => app.previous_language(),
                     AppMode::TitleList => app.previous_title(),
+                    AppMode::FilteredList => app.previous_filtered(),
                     AppMode::Menu => {
                         if let Some(i) = app.menu_state.selected() {
                             let new_index = if i == 0 { 0 } else { i - 1 };
@@ -601,6 +693,7 @@ fn main() -> Result<(), io::Error> {
                     AppMode::AuthorList => app.select_current_author(),
                     AppMode::LanguageList => app.select_current_language(),
                     AppMode::TitleList => app.select_current_title(),
+                    AppMode::FilteredList => app.select_current_filtered(),
                     AppMode::Menu => {
                         match app.menu_state.selected() {
                             Some(0) => app.mode = AppMode::AuthorList,
