@@ -211,19 +211,31 @@ fn render_poem_text(version: &Version) -> String {
     if version.vertical.unwrap_or(false) {
         let lines: Vec<Vec<char>> = version.text
             .lines()
-            .map(|line| line.chars().collect())
+            .filter(|line| !line.trim().is_empty())  // Skip empty lines
+            .map(|line| line.trim().chars().collect())  // Trim whitespace
             .collect();
         
         if lines.is_empty() { return String::new() }
         
-        let height = lines.len();
-        let width = lines[0].len();
+        let max_width = lines.iter().map(|line| line.len()).max().unwrap_or(0);
+        let padded_lines: Vec<Vec<char>> = lines.into_iter()
+            .map(|mut line| {
+                while line.len() < max_width {
+                    line.push(' ');
+                }
+                line
+            })
+            .collect();
         
-        (0..width)
+        let height = padded_lines.len();
+        
+        (0..max_width)
             .map(|x| {
                 (0..height).rev()
-                    .map(|y| lines.get(y).and_then(|line| line.get(x)).unwrap_or(&' '))
+                    .map(|y| padded_lines.get(y).and_then(|line| line.get(x)).unwrap_or(&' '))
                     .collect::<String>()
+                    .trim_end()  // Remove trailing spaces
+                    .to_string()
             })
             .collect::<Vec<_>>()
             .join("\n")
