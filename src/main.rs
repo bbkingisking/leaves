@@ -297,6 +297,50 @@ impl App {
         }
     }
 
+    fn get_version_in_language(&self, poem_idx: usize, language: &str) -> (&Version, bool) {
+        let poem = &self.poems[poem_idx];
+        
+        // First check canonical version
+        if poem.canonical.language == language {
+            return (&poem.canonical, true);
+        }
+        
+        // Then check other versions
+        for version in poem.other_versions.values() {
+            if version.language == language {
+                return (version, true);
+            }
+        }
+        
+        // Fallback to canonical if no version found in target language
+        (&poem.canonical, false)
+    }
+
+    fn get_filtered_list_title(&self) -> String {
+        match self.previous_mode {
+            Some(AppMode::AuthorList) => {
+                if let Some(index) = self.author_list_state.selected() {
+                    let authors = self.get_sorted_authors();
+                    if let Some(author) = authors.get(index) {
+                        return format!("Poems by {}", author);
+                    }
+                }
+            },
+            Some(AppMode::LanguageList) => {
+                if let Some(index) = self.language_list_state.selected() {
+                    let languages = self.get_sorted_languages();
+                    if let Some(language) = languages.get(index) {
+                        return format!("Poems in {}", language);
+                    }
+                }
+            },
+            Some(AppMode::TitleList) => {
+                return "Search Results".to_string();
+            },
+            _ => {}
+        }
+        "Filtered Poems".to_string()
+    }
 
     fn next_poem(&mut self) {
         match &self.filtered_poems {
@@ -611,13 +655,39 @@ fn main() -> Result<(), io::Error> {
                         let items: Vec<ListItem> = indices.iter()
                             .map(|&idx| {
                                 let poem = &app.poems[idx];
-                                ListItem::new(format!("{} - {}", poem.canonical.author, poem.canonical.title))
+                                let display_text = match app.previous_mode {
+                                    Some(AppMode::AuthorList) => {
+                                        // When coming from author list, show only titles
+                                        poem.canonical.title.clone()
+                                    },
+                                    Some(AppMode::LanguageList) => {
+                                        if let Some(lang_index) = app.language_list_state.selected() {
+                                            let languages = app.get_sorted_languages();
+                                            if let Some(language) = languages.get(lang_index) {
+                                                // Get the version in the target language
+                                                let (version, _found) = app.get_version_in_language(idx, language);
+                                                format!("{} - {}", version.author, version.title)
+                                            } else {
+                                                format!("{} - {}", poem.canonical.author, poem.canonical.title)
+                                            }
+                                        } else {
+                                            format!("{} - {}", poem.canonical.author, poem.canonical.title)
+                                        }
+                                    },
+                                    _ => {
+                                        format!("{} - {}", poem.canonical.author, poem.canonical.title)
+                                    }
+                                };
+                                ListItem::new(display_text)
                             })
                             .collect();
 
                         let filtered_list = List::new(items)
                             .block(Block::default()
-                                .title(Span::styled("Filtered Poems", Style::default().fg(Color::Yellow)))
+                                .title(Span::styled(
+                                    app.get_filtered_list_title(),
+                                    Style::default().fg(Color::Yellow)
+                                ))
                                 .borders(Borders::ALL))
                             .style(Style::default().fg(Color::White))
                             .highlight_style(Style::default().fg(Color::Black).bg(Color::White));
