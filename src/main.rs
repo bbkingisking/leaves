@@ -170,6 +170,7 @@ impl App {
                         self.current_poem = indices[0];
                     }
                 }
+                self.previous_mode = Some(AppMode::AuthorList);
                 self.mode = AppMode::Viewing;
             }
         }
@@ -226,6 +227,7 @@ impl App {
                    self.current_poem = filtered[0].0;
                    self.current_version = filtered[0].1.to_string();
                }
+               self.previous_mode = Some(AppMode::LanguageList);
                self.mode = AppMode::Viewing;
            }
        }
@@ -264,7 +266,7 @@ impl App {
     }
 
     fn set_mode(&mut self, new_mode: AppMode) {
-        self.previous_mode = Some(std::mem::replace(&mut self.mode, new_mode));
+        self.mode = new_mode;
     }
 }
 
