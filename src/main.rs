@@ -387,8 +387,8 @@ fn main() -> Result<(), io::Error> {
                 },
                 AppMode::Menu => {
                     let items = vec![
-                        ListItem::new("Browse by author"),
-                        ListItem::new("Browse by language"),
+                        ListItem::new(format!("Browse by author ({})", app.author_counts.len())),
+                        ListItem::new(format!("Browse by language ({})", app.language_counts.len())),
                     ];
                     let menu = List::new(items)
                         .block(Block::default()
