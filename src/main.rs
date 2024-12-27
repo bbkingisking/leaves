@@ -309,7 +309,7 @@ fn main() -> Result<(), io::Error> {
                 },
                 AppMode::Menu => {
                     let items = vec![
-                        ListItem::new("Browse by Author")
+                        ListItem::new("Browse by author"),
                     ];
                     let menu = List::new(items)
                         .block(Block::default()
@@ -342,14 +342,8 @@ fn main() -> Result<(), io::Error> {
 
         if let Event::Key(key) = event::read()? {
             match key.code {
-                KeyCode::Char('q') => {
-                    match app.mode {
-                        AppMode::Viewing => break,
-                        _ => {
-                            app.mode = AppMode::Viewing;
-                            app.filtered_poems = None;
-                        }
-                    }
+                KeyCode::Char('q') => { 
+                    break
                 },
                 KeyCode::Backspace => {
                     match app.mode {
