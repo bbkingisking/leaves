@@ -474,42 +474,55 @@ fn load_poems() -> io::Result<Vec<Poem>> {
 }
 
 fn render_poem_text(version: &Version) -> String {
-    if version.vertical.unwrap_or(false) {
-        let lines: Vec<Vec<char>> = version.text
-            .lines()
-            .filter(|line| !line.trim().is_empty())  // Skip empty lines
-            .map(|line| line.trim().chars().collect())  // Trim whitespace
-            .collect();
-        
-        if lines.is_empty() { return String::new() }
-        
-        let max_width = lines.iter().map(|line| line.len()).max().unwrap_or(0);
-        let padded_lines: Vec<Vec<char>> = lines.into_iter()
-            .map(|mut line| {
-                while line.len() < max_width {
-                    line.push(' ');
-                }
-                line
-            })
-            .collect();
-        
-        let height = padded_lines.len();
-        
-        (0..max_width)
-            .map(|x| {
-                (0..height).rev()
-                    .map(|y| padded_lines.get(y).and_then(|line| line.get(x)).unwrap_or(&' '))
-                    .collect::<String>()
-                    .trim_end()  // Remove trailing spaces
-                    .to_string()
-            })
-            .collect::<Vec<_>>()
-            .join("\n")
-    } else {
-        version.text.clone()
+    if !version.vertical.unwrap_or(false) {
+        return version.text.clone();
     }
-}
 
+    // Get max width first
+    let width = version.text
+        .lines()
+        .map(|line| line.trim().chars().count())
+        .max()
+        .unwrap_or(0);
+
+    // Pad all lines to the same width using full-width spaces
+    let lines: Vec<Vec<char>> = version.text
+        .lines()
+        .map(|line| {
+            let mut chars: Vec<char> = line.trim().chars().collect();
+            while chars.len() < width {
+                chars.push('　'); // Full-width space
+            }
+            chars
+        })
+        .collect();
+
+    if lines.is_empty() {
+        return String::new();
+    }
+
+    // Get dimensions
+    let height = lines.len();
+
+    // Create columns right-to-left
+    let mut result = Vec::new();
+    for x in 0..width {
+        let mut column = Vec::new();
+        for y in 0..height {
+            let ch = lines
+                .get(height - 1 - y) // Reverse y-axis for top-to-bottom
+                .and_then(|line| line.get(x)) // Keep x-axis as is for right-to-left
+                .copied()
+                .unwrap_or('　'); // Full-width space for missing characters
+            column.push(ch);
+        }
+
+        // Add the column to the result
+        result.push(column.into_iter().collect::<String>());
+    }
+
+    result.join("\n")
+}
 
 fn render_status_bar(items: Vec<(&str, &str)>) -> Paragraph<'static> {
     let spans: Vec<Span<'static>> = items.into_iter()
