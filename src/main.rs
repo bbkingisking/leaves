@@ -16,7 +16,8 @@ use std::{io, fs, path::PathBuf, collections::HashMap};
 #[derive(Debug, Serialize, Deserialize)]
 struct Poem {
     canonical: Version,
-    modern_spelling: Option<Version>,
+    #[serde(flatten)]
+    other_versions: HashMap<String, Version>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -39,6 +40,7 @@ enum AppMode {
 struct App {
     poems: Vec<Poem>,
     current_poem: usize,
+    current_version: String,
     mode: AppMode,
     previous_mode: Option<AppMode>,
     author_counts: HashMap<String, usize>,
@@ -65,12 +67,38 @@ impl App {
         Self {
             poems,
             current_poem: 0,
+            current_version: "canonical".to_string(),  // Default version
             mode: AppMode::Menu,
             previous_mode: None,
             author_counts,
             author_list_state: list_state,
             menu_state: menu_state,
             filtered_poems: None,
+        }
+    }
+
+    fn toggle_version(&mut self) {
+        let poem = &self.poems[self.current_poem];
+        let versions: Vec<String> = std::iter::once("canonical".to_string())
+            .chain(poem.other_versions.keys().cloned())
+            .collect();
+        
+        if versions.len() > 1 {
+            let current_idx = versions.iter()
+                .position(|v| v == &self.current_version)
+                .unwrap_or(0);
+            let next_idx = (current_idx + 1) % versions.len();
+            self.current_version = versions[next_idx].clone();
+        }
+    }
+
+    fn get_current_version(&self) -> &Version {
+        let poem = &self.poems[self.current_poem];
+        if self.current_version == "canonical" {
+            &poem.canonical
+        } else {
+            poem.other_versions.get(&self.current_version)
+                .unwrap_or(&poem.canonical)
         }
     }
 
@@ -242,8 +270,7 @@ fn main() -> Result<(), io::Error> {
 
             match app.mode {
                 AppMode::Viewing => {
-                    let poem = &app.poems[app.current_poem];
-                    let version = poem.modern_spelling.as_ref().unwrap_or(&poem.canonical);
+                    let version = app.get_current_version();
                     let text = render_poem_text(version);
 
                     let title = Line::from(vec![
@@ -325,6 +352,10 @@ fn main() -> Result<(), io::Error> {
                 },                
                 KeyCode::Char('m') => {
                     app.mode = AppMode::Menu;
+                },
+                KeyCode::Char('s') => match app.mode {
+                    AppMode::Viewing => app.toggle_version(),
+                    _ => {}
                 },
                 KeyCode::Char('1') => {
                     if matches!(app.mode, AppMode::Menu) {
