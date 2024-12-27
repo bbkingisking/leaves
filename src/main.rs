@@ -30,11 +30,12 @@ struct Version {
     vertical: Option<bool>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 enum AppMode {
     Viewing,
     Menu,
     AuthorList,
+    LanguageList,
 }
 
 struct App {
@@ -43,8 +44,13 @@ struct App {
     current_version: String,
     mode: AppMode,
     previous_mode: Option<AppMode>,
+
     author_counts: HashMap<String, usize>,
     author_list_state: ListState,
+
+    language_counts: HashMap<String, usize>,
+    language_list_state: ListState,
+
     menu_state: ListState,
     filtered_poems: Option<Vec<usize>>,
 }
@@ -57,13 +63,27 @@ impl App {
                 *map.entry(author).or_insert(0) += 1;
                 map
             });
-        
+
+        let language_counts = poems.iter()
+            .flat_map(|p| {
+                std::iter::once(p.canonical.language.clone())
+                    .chain(p.other_versions.values()
+                        .map(|v| v.language.clone()))
+            })
+            .fold(HashMap::new(), |mut map, lang| {
+                *map.entry(lang).or_insert(0) += 1;
+                map
+            });
+
         let mut list_state = ListState::default();
         list_state.select(Some(0));
 
         let mut menu_state = ListState::default();
         menu_state.select(Some(0));
         
+        let mut language_list_state = ListState::default();
+        language_list_state.select(Some(0));
+
         Self {
             poems,
             current_poem: 0,
@@ -72,6 +92,8 @@ impl App {
             previous_mode: None,
             author_counts,
             author_list_state: list_state,
+            language_counts,
+            language_list_state,
             menu_state: menu_state,
             filtered_poems: None,
         }
@@ -151,6 +173,62 @@ impl App {
                 self.mode = AppMode::Viewing;
             }
         }
+    }
+
+    fn get_sorted_languages(&self) -> Vec<String> {
+        let mut languages: Vec<_> = self.language_counts.keys().cloned().collect();
+        languages.sort();
+        languages
+    }
+
+    fn next_language(&mut self) {
+        let languages = self.get_sorted_languages();
+        let i = match self.language_list_state.selected() {
+            Some(i) => (i + 1) % languages.len(),
+            None => 0,
+        };
+        self.language_list_state.select(Some(i));
+    }
+
+    fn previous_language(&mut self) {
+        let languages = self.get_sorted_languages();
+        let i = match self.language_list_state.selected() {
+            Some(i) => {
+                if i == 0 {
+                    languages.len() - 1
+                } else {
+                    i - 1
+                }
+            }
+            None => 0,
+        };
+        self.language_list_state.select(Some(i));
+    }
+
+    fn select_current_language(&mut self) {
+       if let Some(index) = self.language_list_state.selected() {
+           let languages = self.get_sorted_languages();
+           if let Some(language) = languages.get(index) {
+               let mut filtered = Vec::new();
+               for (i, poem) in self.poems.iter().enumerate() {
+                   if poem.canonical.language == *language {
+                       filtered.push((i, "canonical"));
+                   }
+                   for (version_key, version) in &poem.other_versions {
+                       if version.language == *language {
+                           filtered.push((i, version_key));
+                       }
+                   }
+               }
+               
+               self.filtered_poems = Some(filtered.iter().map(|(i, _)| *i).collect());
+               if !filtered.is_empty() {
+                   self.current_poem = filtered[0].0;
+                   self.current_version = filtered[0].1.to_string();
+               }
+               self.mode = AppMode::Viewing;
+           }
+       }
     }
 
     fn next_poem(&mut self) {
@@ -310,6 +388,7 @@ fn main() -> Result<(), io::Error> {
                 AppMode::Menu => {
                     let items = vec![
                         ListItem::new("Browse by author"),
+                        ListItem::new("Browse by language"),
                     ];
                     let menu = List::new(items)
                         .block(Block::default()
@@ -336,6 +415,23 @@ fn main() -> Result<(), io::Error> {
 
                     f.render_stateful_widget(author_list, chunks[0], &mut app.author_list_state);
                 }
+                AppMode::LanguageList => {
+                    let languages = app.get_sorted_languages();
+                    let items: Vec<ListItem> = languages.iter()
+                        .map(|lang| {
+                            ListItem::new(format!("{} ({})", lang, app.language_counts[lang]))
+                        })
+                        .collect();
+
+                    let language_list = List::new(items)
+                        .block(Block::default()
+                            .title(Span::styled("Languages", Style::default().fg(Color::Yellow)))
+                            .borders(Borders::ALL))
+                        .style(Style::default().fg(Color::White))
+                        .highlight_style(Style::default().fg(Color::Black).bg(Color::White));
+
+                    f.render_stateful_widget(language_list, chunks[0], &mut app.language_list_state);
+                }
             }
             f.render_widget(render_status_bar(), chunks[1]);
         })?;
@@ -347,13 +443,17 @@ fn main() -> Result<(), io::Error> {
                 },
                 KeyCode::Backspace => {
                     match app.mode {
-                        AppMode::AuthorList => app.set_mode(AppMode::Menu),
-                        AppMode::Viewing => {
-                            if app.filtered_poems.is_some() {
-                                app.set_mode(AppMode::AuthorList);
-                            }
+                    AppMode::AuthorList | AppMode::LanguageList => app.set_mode(AppMode::Menu),
+                    AppMode::Viewing => {
+                        if app.filtered_poems.is_some() {
+                            app.set_mode(match app.previous_mode.as_ref().unwrap_or(&AppMode::Menu) {
+                                AppMode::AuthorList => AppMode::AuthorList,
+                                AppMode::LanguageList => AppMode::LanguageList,
+                                _ => AppMode::Menu,
+                            });
                         }
-                        _ => {}
+                    }
+                    _ => {}
                     }
                 },                
                 KeyCode::Char('m') => {
@@ -378,9 +478,10 @@ fn main() -> Result<(), io::Error> {
                 },
                 KeyCode::Down => match app.mode {
                     AppMode::AuthorList => app.next_author(),
+                    AppMode::LanguageList => app.next_language(),
                     AppMode::Menu => {
                         if let Some(i) = app.menu_state.selected() {
-                            let new_index = (i + 1) % 1; // Update when adding more menu items
+                            let new_index = (i + 1) % 2; // Update when adding more menu items
                             app.menu_state.select(Some(new_index));
                         }
                     }
@@ -388,6 +489,7 @@ fn main() -> Result<(), io::Error> {
                 },
                 KeyCode::Up => match app.mode {
                     AppMode::AuthorList => app.previous_author(),
+                    AppMode::LanguageList => app.previous_language(),
                     AppMode::Menu => {
                         if let Some(i) = app.menu_state.selected() {
                             let new_index = if i == 0 { 0 } else { i - 1 };
@@ -398,9 +500,12 @@ fn main() -> Result<(), io::Error> {
                 },
                 KeyCode::Enter => match app.mode {
                     AppMode::AuthorList => app.select_current_author(),
+                    AppMode::LanguageList => app.select_current_language(),
                     AppMode::Menu => {
-                        if let Some(0) = app.menu_state.selected() {
-                            app.mode = AppMode::AuthorList;
+                        match app.menu_state.selected() {
+                            Some(0) => app.mode = AppMode::AuthorList,
+                            Some(1) => app.mode = AppMode::LanguageList,
+                            _ => {}
                         }
                     }
                     _ => {}
