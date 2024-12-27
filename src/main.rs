@@ -36,6 +36,7 @@ enum AppMode {
     Menu,
     AuthorList,
     LanguageList,
+    TitleList,
 }
 
 struct App {
@@ -50,6 +51,8 @@ struct App {
 
     language_counts: HashMap<String, usize>,
     language_list_state: ListState,
+
+    title_list_state: ListState,
 
     menu_state: ListState,
     filtered_poems: Option<Vec<usize>>,
@@ -84,17 +87,21 @@ impl App {
         let mut language_list_state = ListState::default();
         language_list_state.select(Some(0));
 
+        let mut title_list_state = ListState::default();
+        title_list_state.select(Some(0));
+
         Self {
             poems,
             current_poem: 0,
-            current_version: "canonical".to_string(),  // Default version
+            current_version: "canonical".to_string(),
             mode: AppMode::Menu,
             previous_mode: None,
             author_counts,
             author_list_state: list_state,
             language_counts,
             language_list_state,
-            menu_state: menu_state,
+            menu_state,
+            title_list_state,
             filtered_poems: None,
         }
     }
@@ -121,6 +128,52 @@ impl App {
         } else {
             poem.other_versions.get(&self.current_version)
                 .unwrap_or(&poem.canonical)
+        }
+    }
+
+    fn get_sorted_titles(&self) -> Vec<(usize, String)> {
+        let mut titles: Vec<_> = self.poems.iter()
+            .enumerate()
+            .map(|(i, p)| (i, p.canonical.title.clone()))
+            .collect();
+        titles.sort_by(|a, b| a.1.to_lowercase().cmp(&b.1.to_lowercase()));
+        titles
+    }
+
+    fn next_title(&mut self) {
+        let titles = self.get_sorted_titles();
+        let i = match self.title_list_state.selected() {
+            Some(i) => (i + 1) % titles.len(),
+            None => 0,
+        };
+        self.title_list_state.select(Some(i));
+    }
+
+    fn previous_title(&mut self) {
+        let titles = self.get_sorted_titles();
+        let i = match self.title_list_state.selected() {
+            Some(i) => {
+                if i == 0 {
+                    titles.len() - 1
+                } else {
+                    i - 1
+                }
+            }
+            None => 0,
+        };
+        self.title_list_state.select(Some(i));
+    }
+
+    fn select_current_title(&mut self) {
+        if let Some(index) = self.title_list_state.selected() {
+            let titles = self.get_sorted_titles();
+            if let Some((poem_index, _)) = titles.get(index) {
+                self.current_poem = *poem_index;
+                self.current_version = "canonical".to_string();
+                self.filtered_poems = Some(vec![*poem_index]);
+                self.previous_mode = Some(AppMode::TitleList);
+                self.mode = AppMode::Viewing;
+            }
         }
     }
 
@@ -324,6 +377,7 @@ fn render_poem_text(version: &Version) -> String {
     }
 }
 
+
 fn render_status_bar(items: Vec<(&str, &str)>) -> Paragraph<'static> {
     let spans: Vec<Span<'static>> = items.into_iter()
         .flat_map(|(key, desc)| vec![
@@ -334,7 +388,6 @@ fn render_status_bar(items: Vec<(&str, &str)>) -> Paragraph<'static> {
         ])
         .collect();
 
-   // Remove trailing separator
    let mut spans = spans;
    if !spans.is_empty() {
        spans.pop();
@@ -360,7 +413,7 @@ fn main() -> Result<(), io::Error> {
                 .direction(Direction::Vertical)
                 .constraints([
                     Constraint::Min(1),
-                    Constraint::Length(1),  // Height for status bar
+                    Constraint::Length(1),
                 ].as_ref())
                 .split(f.size());
 
@@ -383,7 +436,7 @@ fn main() -> Result<(), io::Error> {
                    ("↑/↓", "select"),
                    ("enter", "choose")
                ]),
-               AppMode::AuthorList | AppMode::LanguageList => render_status_bar(vec![
+               AppMode::AuthorList | AppMode::LanguageList | AppMode::TitleList => render_status_bar(vec![
                    ("↑/↓", "select"),
                    ("enter", "choose"),
                    ("backspace", "back")
@@ -421,6 +474,7 @@ fn main() -> Result<(), io::Error> {
                     let items = vec![
                         ListItem::new(format!("Browse by author ({})", app.author_counts.len())),
                         ListItem::new(format!("Browse by language ({})", app.language_counts.len())),
+                        ListItem::new(format!("Browse by title ({})", app.poems.len())),
                     ];
                     let menu = List::new(items)
                         .block(Block::default()
@@ -429,6 +483,21 @@ fn main() -> Result<(), io::Error> {
                         .style(Style::default().fg(Color::White))
                         .highlight_style(Style::default().fg(Color::Black).bg(Color::White));
                     f.render_stateful_widget(menu, chunks[0], &mut app.menu_state);
+                },
+                AppMode::TitleList => {
+                    let titles = app.get_sorted_titles();
+                    let items: Vec<ListItem> = titles.iter()
+                        .map(|(_, title)| ListItem::new(title.clone()))
+                        .collect();
+
+                    let title_list = List::new(items)
+                        .block(Block::default()
+                            .title(Span::styled("Titles", Style::default().fg(Color::Yellow)))
+                            .borders(Borders::ALL))
+                        .style(Style::default().fg(Color::White))
+                        .highlight_style(Style::default().fg(Color::Black).bg(Color::White));
+
+                    f.render_stateful_widget(title_list, chunks[0], &mut app.title_list_state);
                 },
                 AppMode::AuthorList => {
                     let authors = app.get_sorted_authors();
@@ -446,7 +515,7 @@ fn main() -> Result<(), io::Error> {
                         .highlight_style(Style::default().fg(Color::Black).bg(Color::White));
 
                     f.render_stateful_widget(author_list, chunks[0], &mut app.author_list_state);
-                }
+                },
                 AppMode::LanguageList => {
                     let languages = app.get_sorted_languages();
                     let items: Vec<ListItem> = languages.iter()
@@ -465,27 +534,28 @@ fn main() -> Result<(), io::Error> {
                     f.render_stateful_widget(language_list, chunks[0], &mut app.language_list_state);
                 }
             }
-        f.render_widget(status_bar, chunks[1]);
+            f.render_widget(status_bar, chunks[1]);
         })?;
 
         if let Event::Key(key) = event::read()? {
             match key.code {
-                KeyCode::Char('q') => { 
-                    break
-                },
+                KeyCode::Char('q') => break,
                 KeyCode::Backspace => {
                     match app.mode {
-                    AppMode::AuthorList | AppMode::LanguageList => app.set_mode(AppMode::Menu),
-                    AppMode::Viewing => {
-                        if app.filtered_poems.is_some() {
-                            app.set_mode(match app.previous_mode.as_ref().unwrap_or(&AppMode::Menu) {
-                                AppMode::AuthorList => AppMode::AuthorList,
-                                AppMode::LanguageList => AppMode::LanguageList,
-                                _ => AppMode::Menu,
-                            });
+                        AppMode::AuthorList | AppMode::LanguageList | AppMode::TitleList => {
+                            app.set_mode(AppMode::Menu)
+                        },
+                        AppMode::Viewing => {
+                            if app.filtered_poems.is_some() {
+                                app.set_mode(match app.previous_mode.as_ref().unwrap_or(&AppMode::Menu) {
+                                    AppMode::AuthorList => AppMode::AuthorList,
+                                    AppMode::LanguageList => AppMode::LanguageList,
+                                    AppMode::TitleList => AppMode::TitleList,
+                                    _ => AppMode::Menu,
+                                });
+                            }
                         }
-                    }
-                    _ => {}
+                        _ => {}
                     }
                 },                
                 KeyCode::Char('m') => {
@@ -494,11 +564,6 @@ fn main() -> Result<(), io::Error> {
                 KeyCode::Char('s') => match app.mode {
                     AppMode::Viewing => app.toggle_version(),
                     _ => {}
-                },
-                KeyCode::Char('1') => {
-                    if matches!(app.mode, AppMode::Menu) {
-                        app.mode = AppMode::AuthorList;
-                    }
                 },
                 KeyCode::Right => match app.mode {
                     AppMode::Viewing => app.next_poem(),
@@ -511,9 +576,10 @@ fn main() -> Result<(), io::Error> {
                 KeyCode::Down => match app.mode {
                     AppMode::AuthorList => app.next_author(),
                     AppMode::LanguageList => app.next_language(),
+                    AppMode::TitleList => app.next_title(),
                     AppMode::Menu => {
                         if let Some(i) = app.menu_state.selected() {
-                            let new_index = (i + 1) % 2; // Update when adding more menu items
+                            let new_index = (i + 1) % 3; // Now 3 menu items
                             app.menu_state.select(Some(new_index));
                         }
                     }
@@ -522,6 +588,7 @@ fn main() -> Result<(), io::Error> {
                 KeyCode::Up => match app.mode {
                     AppMode::AuthorList => app.previous_author(),
                     AppMode::LanguageList => app.previous_language(),
+                    AppMode::TitleList => app.previous_title(),
                     AppMode::Menu => {
                         if let Some(i) = app.menu_state.selected() {
                             let new_index = if i == 0 { 0 } else { i - 1 };
@@ -533,10 +600,12 @@ fn main() -> Result<(), io::Error> {
                 KeyCode::Enter => match app.mode {
                     AppMode::AuthorList => app.select_current_author(),
                     AppMode::LanguageList => app.select_current_language(),
+                    AppMode::TitleList => app.select_current_title(),
                     AppMode::Menu => {
                         match app.menu_state.selected() {
                             Some(0) => app.mode = AppMode::AuthorList,
                             Some(1) => app.mode = AppMode::LanguageList,
+                            Some(2) => app.mode = AppMode::TitleList,
                             _ => {}
                         }
                     }
