@@ -19,6 +19,8 @@ struct Poem {
     canonical: Version,
     #[serde(flatten)]
     other_versions: HashMap<String, Version>,
+    #[serde(skip)]
+    filename: String,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -466,7 +468,12 @@ fn load_poems() -> io::Result<Vec<Poem>> {
         let entry = entry?;
         if entry.path().extension().and_then(|s| s.to_str()) == Some("poem") {
             let content = fs::read_to_string(entry.path())?;
-            if let Ok(poem) = serde_yaml::from_str(&content) {
+            if let Ok(poem) = serde_yaml::from_str::<Poem>(&content) {
+                let mut poem = poem;
+                poem.filename = entry.path().file_name()
+                    .unwrap_or_default()
+                    .to_string_lossy()
+                    .into();
                 poems.push(poem);
             }
         }
@@ -595,6 +602,7 @@ fn main() -> Result<(), io::Error> {
                     if !app.poems[app.current_poem].other_versions.is_empty() {
                         items.push(("s", "switch version"));
                     }
+                    items.push(("ctrl+e", "edit"));
                     render_status_bar(items)
                 },
                AppMode::Menu => render_status_bar(vec![
@@ -872,6 +880,36 @@ fn main() -> Result<(), io::Error> {
                             let new_index = if i == 0 { 0 } else { i - 1 };
                             app.menu_state.select(Some(new_index));
                         }
+                    }
+                },
+                KeyCode::Char('e') if key.modifiers.contains(event::KeyModifiers::CONTROL) => {
+                    match app.mode {
+                        AppMode::Viewing => {
+                            let home = std::env::var("HOME").expect("HOME not set");
+                            let poem_path = PathBuf::from(home)
+                                .join("Documents")
+                                .join("poetry")
+                                .join(&app.poems[app.current_poem].filename);
+                            
+                            #[cfg(target_os = "macos")]
+                            std::process::Command::new("open")
+                                .arg(&poem_path)
+                                .spawn()
+                                .expect("Failed to open file");
+
+                            #[cfg(target_os = "linux")]
+                            std::process::Command::new("xdg-open")
+                                .arg(&poem_path)
+                                .spawn()
+                                .expect("Failed to open file");
+
+                            #[cfg(target_os = "windows")] 
+                            std::process::Command::new("cmd")
+                                .args(["/C", "start", poem_path.to_str().unwrap()])
+                                .spawn()
+                                .expect("Failed to open file");
+                        },
+                        _ => {}
                     }
                 },
                 KeyCode::Enter => match app.mode {
