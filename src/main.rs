@@ -614,7 +614,7 @@ fn main() -> Result<(), io::Error> {
                     let title = Line::from(vec![
                         Span::styled(&version.author, Style::default().fg(Color::Yellow)),
                         Span::raw(" - "),
-                        Span::raw(&version.title)
+                        Span::styled(&version.title, Style::default().fg(Color::Yellow)),
                     ]);
                     
                     let poem_block = Block::default()
