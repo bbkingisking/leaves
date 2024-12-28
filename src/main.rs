@@ -584,7 +584,11 @@ fn main() -> Result<(), io::Error> {
            let status_bar = match app.mode {
                 AppMode::Viewing => {
                     let mut items = vec![
-                        ("m", "menu"),
+                        if app.filtered_poems.is_none() && app.previous_mode.is_none() {
+                            ("m/backspace", "menu")
+                        } else {
+                            ("m", "menu")
+                        },
                         ("←/→", "navigate poems")
                     ];
                     
@@ -706,6 +710,7 @@ fn main() -> Result<(), io::Error> {
                         ListItem::new(format!("Browse by author ({})", app.author_counts.len())),
                         ListItem::new(format!("Browse by language ({})", app.language_counts.len())),
                         ListItem::new(format!("Browse by title ({})", app.poems.len())),
+                        ListItem::new("Random poem"),
                     ];
                     let menu = List::new(items)
                         .block(Block::default()
@@ -821,6 +826,8 @@ fn main() -> Result<(), io::Error> {
                         AppMode::Viewing => {
                             if app.filtered_poems.is_some() {
                                 app.mode = AppMode::FilteredList;
+                            } else {
+                                app.mode = AppMode::Menu;
                             }
                         },
                         AppMode::FilteredList => {
@@ -862,7 +869,7 @@ fn main() -> Result<(), io::Error> {
                     AppMode::FilteredList => app.next_filtered(),
                     AppMode::Menu => {
                         if let Some(i) = app.menu_state.selected() {
-                            let new_index = (i + 1) % 3; // Now 3 menu items
+                            let new_index = (i + 1) % 4; // Now 4 menu items
                             app.menu_state.select(Some(new_index));
                         }
                     }
@@ -922,6 +929,14 @@ fn main() -> Result<(), io::Error> {
                             Some(0) => app.mode = AppMode::AuthorList,
                             Some(1) => app.mode = AppMode::LanguageList,
                             Some(2) => app.mode = AppMode::TitleList,
+                            Some(3) => {
+                                use rand::Rng;
+                                let mut rng = rand::thread_rng();
+                                app.current_poem = rng.gen_range(0..app.poems.len());
+                                app.current_version = "canonical".to_string();
+                                app.filtered_poems = None;
+                                app.mode = AppMode::Viewing;
+                            },
                             _ => {}
                         }
                     }
