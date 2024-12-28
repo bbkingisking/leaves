@@ -1,6 +1,7 @@
 use crossterm::{
     event::{self, Event, KeyCode},
-    terminal::{disable_raw_mode, enable_raw_mode},
+    terminal::{disable_raw_mode, enable_raw_mode, SetTitle},
+    execute,
 };
 use ratatui::{
     backend::CrosstermBackend,
@@ -546,7 +547,11 @@ fn render_status_bar(items: Vec<(&str, &str)>) -> Paragraph<'static> {
 
 fn main() -> Result<(), io::Error> {
     enable_raw_mode()?;
-    let stdout = io::stdout();
+    let mut stdout = io::stdout();
+    
+    // Set the terminal title
+    execute!(stdout, SetTitle("leaves"))?;
+
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
