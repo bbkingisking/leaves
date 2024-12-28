@@ -2,7 +2,7 @@
 
 A TUI (Terminal User Interface) application for reading and managing multilingual poetry collections. Just learning `rust` and `ratatui`.
 
-<img src="./demos/demo.mp4" height="500" align="center" />
+https://github.com/user-attachments/assets/4618727b-7302-44ae-917e-afab3d403ea3
 
 ## Features
 
