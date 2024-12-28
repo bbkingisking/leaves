@@ -631,9 +631,11 @@ fn main() -> Result<(), io::Error> {
                     let has_scroll = lines.len() > viewport_height;
                     
                     let title = Line::from(vec![
+                        Span::raw(" "),
                         Span::styled(&version.author, Style::default().fg(Color::Yellow)),
                         Span::raw(" - "),
                         Span::styled(&version.title, Style::default().fg(Color::Yellow)),
+                        Span::raw(" "),
                     ]);
                     
                     let poem_block = Block::default()
