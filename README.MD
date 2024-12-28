@@ -2,7 +2,7 @@
 
 A TUI (Terminal User Interface) application for reading and managing multilingual poetry collections. Just learning `rust` and `ratatui`.
 
-<img src="./demos/demo.mp4" height="500" />
+<img src="./demos/demo.mp4" height="500" align="center" />
 
 ## Features
 
@@ -19,6 +19,7 @@ A TUI (Terminal User Interface) application for reading and managing multilingua
 - [ ] Allow exporting to pdf, md, and custom XHTML
 - [ ] Decide how to render epigraphs
 - [ ] Add some language-specific parsing (e.g. half-nonbreaking spaces `U+202F` instead of whitespaces before punctuation in French)
+- [ ] Record nicer demos
 
 ## Usage
 
