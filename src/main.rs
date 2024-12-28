@@ -1,6 +1,6 @@
 use crossterm::{
     event::{self, Event, KeyCode},
-    terminal::{disable_raw_mode, enable_raw_mode, SetTitle},
+    terminal::{disable_raw_mode, enable_raw_mode, SetTitle, EnterAlternateScreen, LeaveAlternateScreen},
     execute,
 };
 use ratatui::{
@@ -547,6 +547,8 @@ fn render_status_bar(items: Vec<(&str, &str)>) -> Paragraph<'static> {
 
 fn main() -> Result<(), io::Error> {
     enable_raw_mode()?;
+    execute!(io::stdout(), EnterAlternateScreen)?;
+
     let mut stdout = io::stdout();
     
     // Set the terminal title
@@ -893,5 +895,6 @@ fn main() -> Result<(), io::Error> {
     }
 
     disable_raw_mode()?;
+    execute!(io::stdout(), LeaveAlternateScreen)?;
     Ok(())
 }
