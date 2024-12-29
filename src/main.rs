@@ -9,6 +9,7 @@ use ratatui::{
     style::{Color, Style},
     widgets::{Block, Borders, Paragraph, List, ListItem, ListState},
     text::{Line, Span},
+    prelude::Modifier,
     Terminal,
 };
 use serde::{Deserialize, Serialize};
@@ -28,6 +29,7 @@ struct Version {
     title: String,
     author: String,
     language: String,
+    epigraph: Option<String>,
     text: String,
     rtl: Option<bool>,
     vertical: Option<bool>,
@@ -481,6 +483,35 @@ fn load_poems() -> io::Result<Vec<Poem>> {
     Ok(poems)
 }
 
+fn wrap_text(text: &str, max_width: usize) -> String {
+    let paragraphs: Vec<&str> = text.split('\n').collect();
+    let mut wrapped = Vec::new();
+
+    for paragraph in paragraphs {
+        let words: Vec<&str> = paragraph.split_whitespace().collect();
+        let mut lines = Vec::new();
+        let mut current_line = String::from("  ");
+
+        for word in words {
+            if current_line.len() + word.len() + 1 <= max_width {
+                if current_line.len() > 2 {
+                    current_line.push(' ');
+                }
+                current_line.push_str(word);
+            } else {
+                lines.push(current_line);
+                current_line = String::from("  ");
+                current_line.push_str(word);
+            }
+        }
+        if !current_line.is_empty() {
+            lines.push(current_line);
+        }
+        wrapped.push(lines.join("\n"));
+    }
+    wrapped.join("\n")
+}
+
 fn render_poem_text(version: &Version) -> String {
     if !version.vertical.unwrap_or(false) {
         return version.text.clone();
@@ -624,7 +655,19 @@ fn main() -> Result<(), io::Error> {
             match app.mode {
                 AppMode::Viewing => {
                     let version = app.get_current_version();
-                    let text = render_poem_text(version);
+                    let mut text = String::new();
+
+                    if let Some(epigraph) = &version.epigraph {
+                        let max_width = version.text.lines()
+                            .map(|line| line.chars().count())
+                            .max()
+                            .unwrap_or(80);
+                        text.push_str("  \n");
+                        text.push_str(&wrap_text(epigraph, max_width));
+                        text.push('\n');
+                    }
+                    text.push_str(&render_poem_text(version));
+
                     let lines: Vec<&str> = text.lines().collect();
                     
                     let viewport_height = app.viewport_height.unwrap_or(chunks[0].height.saturating_sub(2)) as usize;
@@ -682,9 +725,18 @@ fn main() -> Result<(), io::Error> {
                         .iter()
                         .skip(app.scroll_position as usize)
                         .take(viewport_height)
-                        .copied()
-                        .collect::<Vec<&str>>()
-                        .join("\n");
+                        .map(|&line| {
+                            if let Some(epigraph) = &version.epigraph {
+                                if epigraph.contains(line.trim()) {
+                                    return Line::from(vec![
+                                        Span::raw("    "), // Padding as raw span
+                                        Span::styled(line.trim(), Style::default().add_modifier(Modifier::ITALIC))
+                                    ]);
+                                }
+                            }
+                            Line::from(vec![Span::raw(line)])
+                        })
+                        .collect::<Vec<Line>>();
 
                     let alignment = if version.rtl.unwrap_or(false) {
                         ratatui::layout::Alignment::Right
