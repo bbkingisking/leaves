@@ -28,22 +28,28 @@ Very much intended for personal use only but if you want to try it out/build upo
 - It reads poems from a custom YAML schema that I haven't fully documented (yet), but the poems in `example_poems` can get you started. Alternatively, here is an incomplete definition of the `POEM` schema:
 
 ```yaml
+---
 canonical:
   title: "Original Title"
   author: "Author Name"
   language: "Original Language"
-  text: "Poem text..."
   rtl: false      # Optional
   vertical: false # Optional
+  text: |
+   line 1
+   line 2
+   …
 
-other_versions: # Optional
-  translation1:
-    title: "Translated Title"
-    author: "Translator Name"
-    language: "Target Language"
-    text: "Translated text..."
-    rtl: false      # Optional
-    vertical: false # Optional
+other_version: # Optional
+  title: "Translated Title"
+  author: "Translator Name"
+  language: "Target Language"
+  rtl: false      # Optional
+  vertical: false # Optional
+  text: |
+   line 1
+   line 2
+   …
 ```
 
 - It is currently hardcoded to look for files  with `.poem` extension in `~/Documents/poetry/`. Change in the source file if needed. 
