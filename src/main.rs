@@ -512,9 +512,50 @@ fn wrap_text(text: &str, max_width: usize) -> String {
     wrapped.join("\n")
 }
 
+fn parse_markdown(text: &str) -> String {
+    let mut result = String::new();
+    let mut in_bold = false;
+    let mut in_italic = false;
+    let mut chars = text.chars().peekable();
+    
+    while let Some(c) = chars.next() {
+        match c {
+            '#' if chars.peek() == Some(&'#') => {
+                chars.next(); // consume second #
+                let mut title = String::new();
+                while let Some(&next) = chars.peek() {
+                    if next == '\n' { break; }
+                    title.push(chars.next().unwrap());
+                }
+                result.push_str(&format!("  ——— **{}** ——— ", title.trim()));
+            },
+            '*' => {
+                if chars.peek() == Some(&'*') {
+                    chars.next();
+                    in_bold = !in_bold;
+                    if in_bold {
+                        result.push_str("**");
+                    } else {
+                        result.push_str("**");
+                    }
+                } else {
+                    in_italic = !in_italic;
+                    if in_italic {
+                        result.push('_');
+                    } else {
+                        result.push('_');  
+                    }
+                }
+            },
+            _ => result.push(c)
+        }
+    }
+    result
+}
+
 fn render_poem_text(version: &Version) -> String {
     if !version.vertical.unwrap_or(false) {
-        return version.text.clone();
+        return parse_markdown(&version.text);
     }
 
     // Get max width first
@@ -666,7 +707,7 @@ fn main() -> Result<(), io::Error> {
                         text.push_str(&wrap_text(epigraph, max_width));
                         text.push('\n');
                     }
-                    text.push_str(&render_poem_text(version));
+                    text.push_str(&parse_markdown(&render_poem_text(version)));
 
                     let lines: Vec<&str> = text.lines().collect();
                     
@@ -721,20 +762,50 @@ fn main() -> Result<(), io::Error> {
                     } else {
                         String::new()
                     };
+                    
                     let visible_text = lines
                         .iter()
                         .skip(app.scroll_position as usize)
                         .take(viewport_height)
-                        .map(|&line| {
-                            if let Some(epigraph) = &version.epigraph {
-                                if epigraph.contains(line.trim()) {
-                                    return Line::from(vec![
-                                        Span::raw("    "), // Padding as raw span
-                                        Span::styled(line.trim(), Style::default().add_modifier(Modifier::ITALIC))
-                                    ]);
+                        .map(|line| {
+                            let parsed = parse_markdown(line);
+                            let mut spans = Vec::new();
+                            let mut current_text = String::new();
+                            let mut current_style = Style::default();
+                            
+                            let mut chars = parsed.chars().peekable();
+                            while let Some(c) = chars.next() {
+                                match c {
+                                    '*' if chars.peek() == Some(&'*') => {
+                                        chars.next();
+                                        if !current_text.is_empty() {
+                                            spans.push(Span::styled(current_text, current_style));
+                                            current_text = String::new();
+                                        }
+                                        current_style = if current_style.add_modifier.contains(Modifier::BOLD) {
+                                            current_style.remove_modifier(Modifier::BOLD)
+                                        } else {
+                                            current_style.add_modifier(Modifier::BOLD)
+                                        };
+                                    },
+                                    '_' => {
+                                        if !current_text.is_empty() {
+                                            spans.push(Span::styled(current_text, current_style));
+                                            current_text = String::new();
+                                        }
+                                        current_style = if current_style.add_modifier.contains(Modifier::ITALIC) {
+                                            current_style.remove_modifier(Modifier::ITALIC)
+                                        } else {
+                                            current_style.add_modifier(Modifier::ITALIC)
+                                        };
+                                    },
+                                    _ => current_text.push(c),
                                 }
                             }
-                            Line::from(vec![Span::raw(line)])
+                            if !current_text.is_empty() {
+                                spans.push(Span::styled(current_text, current_style));
+                            }
+                            Line::from(spans)
                         })
                         .collect::<Vec<Line>>();
 
