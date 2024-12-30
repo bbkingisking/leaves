@@ -554,24 +554,33 @@ fn parse_markdown(text: &str) -> String {
 }
 
 fn render_poem_text(version: &Version) -> String {
-    if !version.vertical.unwrap_or(false) {
+    // Base case - no special formatting
+    if !version.vertical.unwrap_or(false) && !version.rtl.unwrap_or(false) {
         return parse_markdown(&version.text);
     }
 
-    // Get max width first
+    // RTL formatting (when vertical is false and rtl is true)
+    if !version.vertical.unwrap_or(false) && version.rtl.unwrap_or(false) {
+        let text = parse_markdown(&version.text);
+        return text.lines()
+            .map(|line| line.chars().rev().collect::<String>())
+            .collect::<Vec<_>>()
+            .join("\n");
+    }
+
+    // Vertical formatting
     let width = version.text
         .lines()
         .map(|line| line.trim().chars().count())
         .max()
         .unwrap_or(0);
 
-    // Pad all lines to the same width using full-width spaces
     let lines: Vec<Vec<char>> = version.text
         .lines()
         .map(|line| {
             let mut chars: Vec<char> = line.trim().chars().collect();
             while chars.len() < width {
-                chars.push('　'); // Full-width space
+                chars.push('　');
             }
             chars
         })
@@ -581,27 +590,17 @@ fn render_poem_text(version: &Version) -> String {
         return String::new();
     }
 
-    // Get dimensions
     let height = lines.len();
-
-    // Create columns right-to-left
-    let mut result = Vec::new();
-    for x in 0..width {
-        let mut column = Vec::new();
-        for y in 0..height {
-            let ch = lines
-                .get(height - 1 - y) // Reverse y-axis for top-to-bottom
-                .and_then(|line| line.get(x)) // Keep x-axis as is for right-to-left
-                .copied()
-                .unwrap_or('　'); // Full-width space for missing characters
-            column.push(ch);
-        }
-
-        // Add the column to the result
-        result.push(column.into_iter().collect::<String>());
-    }
-
-    result.join("\n")
+    
+    (0..width)
+        .map(|x| {
+            (0..height)
+                .rev()
+                .map(|y| lines[y][x])
+                .collect::<String>()
+        })
+        .collect::<Vec<String>>()
+        .join("\n")
 }
 
 fn render_status_bar(items: Vec<(&str, &str)>) -> Paragraph<'static> {
