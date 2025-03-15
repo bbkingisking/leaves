@@ -2,7 +2,7 @@ use crate::models::{Poem, Version};
 use std::collections::HashMap;
 use ratatui::widgets::ListState;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum AppMode {
 	Viewing,
 	Menu,
@@ -10,6 +10,7 @@ pub enum AppMode {
 	LanguageList,
 	TitleList,
 	FilteredList,
+	Search,
 }
 
 pub struct App {
@@ -28,6 +29,9 @@ pub struct App {
 	pub filtered_list_state: ListState,
 	pub menu_state: ListState,
 	pub filtered_poems: Option<Vec<usize>>,
+	pub search_query: String,
+	pub search_list_state: ListState,
+	pub search_results: Vec<usize>,
 }
 
 impl App {
@@ -68,6 +72,13 @@ impl App {
 			title_list_state,
 			filtered_list_state,
 			filtered_poems: None,
+			search_query: String::new(),
+			search_list_state: {
+				let mut state = ListState::default();
+				state.select(Some(0));
+				state
+			},
+			search_results: Vec::new(),
 		}
 	}
 	pub fn toggle_version(&mut self) {
@@ -326,5 +337,25 @@ impl App {
 	pub fn set_mode(&mut self, new_mode: AppMode) {
 		self.mode = new_mode;
 		self.scroll_position = 0;
+	}
+	pub fn update_search_results(&mut self) {
+		let query = self.search_query.to_lowercase();
+		if query.is_empty() {
+			self.search_results.clear();
+			self.search_list_state.select(None);
+		} else {
+			self.search_results = self.poems.iter().enumerate().filter_map(|(i, poem)| {
+				if poem.canonical.title.to_lowercase().contains(&query) || poem.canonical.author.to_lowercase().contains(&query) {
+					Some(i)
+				} else {
+					None
+				}
+			}).collect();
+			if self.search_results.is_empty() {
+				self.search_list_state.select(None);
+			} else if self.search_list_state.selected().is_none() {
+				self.search_list_state.select(Some(0));
+			}
+		}
 	}
 }

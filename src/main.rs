@@ -70,7 +70,19 @@ fn main() -> Result<(), io::Error> {
 					("enter", "choose"),
 					("backspace", "back")
 				]),
+				_ => ui::render_status_bar(vec![]),
 			};
+			if app.mode == app::AppMode::Search {
+				let items: Vec<ListItem> = app.search_results.iter().map(|&idx| {
+					let poem = &app.poems[idx];
+					ListItem::new(format!("{} - {}", poem.canonical.author, poem.canonical.title))
+				}).collect();
+				let search_list = List::new(items)
+					.block(Block::default().title(Span::styled(format!("Search: {}", app.search_query), Style::default().fg(Color::Yellow))).borders(Borders::ALL))
+					.style(Style::default().fg(Color::White))
+					.highlight_style(Style::default().fg(Color::Black).bg(Color::White));
+				f.render_stateful_widget(search_list, chunks[0], &mut app.search_list_state);
+			}
 			match app.mode {
 				app::AppMode::Viewing => {
 					let version = app.get_current_version();
@@ -140,9 +152,13 @@ fn main() -> Result<(), io::Error> {
 						ListItem::new(format!("Browse by author ({})", app.author_counts.len())),
 						ListItem::new(format!("Browse by language ({})", app.language_counts.len())),
 						ListItem::new(format!("Browse by title ({})", app.poems.len())),
+						ListItem::new(format!("Search ({})", app.poems.len())),
 						ListItem::new("Random poem"),
 					];
-					let menu = List::new(items).block(Block::default().title(Span::styled("Menu", Style::default().fg(Color::Yellow))).borders(Borders::ALL)).style(Style::default().fg(Color::White)).highlight_style(Style::default().fg(Color::Black).bg(Color::White));
+					let menu = List::new(items)
+						.block(Block::default().title(Span::styled("Menu", Style::default().fg(Color::Yellow))).borders(Borders::ALL))
+						.style(Style::default().fg(Color::White))
+						.highlight_style(Style::default().fg(Color::Black).bg(Color::White));
 					f.render_stateful_widget(menu, chunks[0], &mut app.menu_state);
 				},
 				app::AppMode::TitleList => {
@@ -190,12 +206,60 @@ fn main() -> Result<(), io::Error> {
 						f.render_stateful_widget(filtered_list, chunks[0], &mut app.filtered_list_state);
 					}
 				}
+				app::AppMode::Search => {} // No rendering here since search is handled separately
 			}
 			f.render_widget(status_bar, chunks[1]);
 		})?;
 		if let Event::Key(key) = event::read()? {
+			if app.mode == app::AppMode::Search {
+				match key.code {
+					KeyCode::Char(c) => {
+						if !key.modifiers.contains(KeyModifiers::CONTROL) {
+							app.search_query.push(c);
+							app.update_search_results();
+						}
+					},
+					KeyCode::Backspace => {
+						app.search_query.pop();
+						app.update_search_results();
+					},
+					KeyCode::Esc => {
+						app.mode = app::AppMode::Menu;
+					},
+					KeyCode::Enter => {
+						if let Some(index) = app.search_list_state.selected() {
+							if let Some(&poem_index) = app.search_results.get(index) {
+								app.current_poem = poem_index;
+								app.current_version = "canonical".to_string();
+								app.mode = app::AppMode::Viewing;
+							}
+						}
+					},
+					KeyCode::Up => {
+						if let Some(i) = app.search_list_state.selected() {
+							let new_i = if i == 0 { app.search_results.len().saturating_sub(1) } else { i - 1 };
+							app.search_list_state.select(Some(new_i));
+						}
+					},
+					KeyCode::Down => {
+						if let Some(i) = app.search_list_state.selected() {
+							let new_i = (i + 1) % app.search_results.len().max(1);
+							app.search_list_state.select(Some(new_i));
+						}
+					},
+					_ => {}
+				}
+				continue;
+			}
 			match key.code {
 				KeyCode::Char('q') => break,
+				KeyCode::Char(':') => {
+					app.mode = app::AppMode::Search;
+					app.search_query.clear();
+					app.search_results.clear();
+					app.update_search_results();
+					app.search_list_state.select(Some(0));
+				},
 				KeyCode::Backspace => {
 					match app.mode {
 						app::AppMode::Viewing => {
@@ -242,12 +306,14 @@ fn main() -> Result<(), io::Error> {
 					app::AppMode::LanguageList => app.next_language(),
 					app::AppMode::TitleList => app.next_title(),
 					app::AppMode::FilteredList => app.next_filtered(),
-					app::AppMode::Menu => {
-						if let Some(i) = app.menu_state.selected() {
-							let new_index = (i + 1) % 4;
-							app.menu_state.select(Some(new_index));
-						}
-					}
+                    app::AppMode::Menu => {
+                        if let Some(i) = app.menu_state.selected() {
+                            let total_items = 5;
+                            let new_index = (i + 1) % total_items;
+                            app.menu_state.select(Some(new_index));
+                        }
+                    },
+					app::AppMode::Search => {}
 				},
 				KeyCode::Up => match app.mode {
 					app::AppMode::Viewing => {
@@ -257,12 +323,14 @@ fn main() -> Result<(), io::Error> {
 					app::AppMode::LanguageList => app.previous_language(),
 					app::AppMode::TitleList => app.previous_title(),
 					app::AppMode::FilteredList => app.previous_filtered(),
-					app::AppMode::Menu => {
-						if let Some(i) = app.menu_state.selected() {
-							let new_index = if i == 0 { 0 } else { i - 1 };
-							app.menu_state.select(Some(new_index));
-						}
-					}
+                    app::AppMode::Menu => {
+                        if let Some(i) = app.menu_state.selected() {
+                            let total_items = 5;
+                            let new_index = if i == 0 { total_items - 1 } else { i - 1 };
+                            app.menu_state.select(Some(new_index));
+                        }
+                    },
+					app::AppMode::Search => {}
 				},
 				KeyCode::Char('e') if key.modifiers.contains(KeyModifiers::CONTROL) => {
 					match app.mode {
@@ -290,6 +358,14 @@ fn main() -> Result<(), io::Error> {
 							Some(1) => app.mode = app::AppMode::LanguageList,
 							Some(2) => app.mode = app::AppMode::TitleList,
 							Some(3) => {
+								// New Search option
+								app.mode = app::AppMode::Search;
+								app.search_query.clear();
+								app.search_results.clear();
+								app.update_search_results();
+								app.search_list_state.select(Some(0));
+							},
+							Some(4) => {
 								let mut rng = rand::thread_rng();
 								app.current_poem = rng.gen_range(0..app.poems.len());
 								app.current_version = "canonical".to_string();
