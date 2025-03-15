@@ -40,9 +40,14 @@ pub fn parse_markdown(text: &str) -> String {
 }
 
 pub fn render_poem_text(version: &Version) -> String {
+	// Case 1: No vertical or RTL formatting enabled.
+	// Simply parse the markdown and return the result.
 	if !version.vertical.unwrap_or(false) && !version.rtl.unwrap_or(false) {
 		return parse_markdown(&version.text);
 	}
+
+	// Case 2: RTL formatting only (vertical is false).
+	// Parse the markdown, then reverse each line for proper RTL display.
 	if !version.vertical.unwrap_or(false) && version.rtl.unwrap_or(false) {
 		let text = parse_markdown(&version.text);
 		return text
@@ -51,12 +56,24 @@ pub fn render_poem_text(version: &Version) -> String {
 			.collect::<Vec<_>>()
 			.join("\n");
 	}
+
+	// Case 3: Vertical formatting is enabled.
+	// First, get the terminal size; default to 80x24 if unavailable.
 	let (_cols, rows) = terminal::size().unwrap_or((80, 24));
+	// Reserve a few rows (e.g., for UI elements) and set the viewport height.
 	let viewport_height = rows.saturating_sub(3) as usize;
+
+	// Split the original text into individual lines.
 	let lines: Vec<&str> = version.text.lines().collect();
+	// Determine the maximum number of characters in any line (after trimming).
 	let max_line_length = lines.iter().map(|l| l.trim().chars().count()).max().unwrap_or(0);
+
+	// If the longest line fits within the viewport height,
+	// render without wrapping by building a character matrix.
 	if max_line_length <= viewport_height {
 		let width = max_line_length;
+		// Create a matrix of characters where each row represents a line.
+		// Shorter lines are padded with a full-width space ('　') to ensure equal length.
 		let matrix: Vec<Vec<char>> = lines
 			.iter()
 			.map(|line| {
@@ -68,30 +85,40 @@ pub fn render_poem_text(version: &Version) -> String {
 			})
 			.collect();
 		let height = matrix.len();
+		// Render the poem vertically by reading the matrix column-wise in reverse row order.
 		return (0..width)
 			.map(|x| (0..height).rev().map(|y| matrix[y][x]).collect::<String>())
 			.collect::<Vec<String>>()
 			.join("\n");
 	} else {
+		// Otherwise, one or more lines are too long and need wrapping.
+		// Process each original line individually, splitting it into segments that fit the viewport height.
 		let mut groups: Vec<Vec<Vec<char>>> = Vec::new();
 		for line in lines {
+			// Trim the line and convert it into a vector of characters.
 			let chars: Vec<char> = line.trim().chars().collect();
 			let mut segments: Vec<Vec<char>> = Vec::new();
 			let mut start = 0;
+			// Split the line into segments of at most viewport_height characters.
 			while start < chars.len() {
 				let end = (start + viewport_height).min(chars.len());
 				let mut seg: Vec<char> = chars[start..end].to_vec();
+				// If the segment is shorter than viewport_height, pad it with a full-width space.
 				while seg.len() < viewport_height {
 					seg.push('　');
 				}
 				segments.push(seg);
 				start += viewport_height;
 			}
+			// For RTL text, reverse the order of segments to preserve the correct reading order.
 			if version.rtl.unwrap_or(false) {
 				segments.reverse();
 			}
 			groups.push(segments);
 		}
+
+		// Combine all segments from every line into a single vector of columns.
+		// For RTL texts, reverse the overall order of the groups.
 		let mut all_columns: Vec<Vec<char>> = Vec::new();
 		if version.rtl.unwrap_or(false) {
 			groups.reverse();
@@ -107,6 +134,8 @@ pub fn render_poem_text(version: &Version) -> String {
 				}
 			}
 		}
+
+		// Build the final output by reading the characters row by row across all columns.
 		let mut output_lines: Vec<String> = Vec::with_capacity(viewport_height);
 		for row in 0..viewport_height {
 			let mut line = String::new();
