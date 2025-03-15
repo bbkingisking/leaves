@@ -293,7 +293,7 @@ fn main() -> Result<(), io::Error> {
 					app::AppMode::Viewing => app.previous_poem(),
 					_ => {}
 				},
-				KeyCode::Down => match app.mode {
+				KeyCode::Down | KeyCode::Char('j') => match app.mode {
 					app::AppMode::Viewing => {
 						let text = ui::render_poem_text(app.get_current_version());
 						let lines = text.lines().count();
@@ -315,7 +315,7 @@ fn main() -> Result<(), io::Error> {
                     },
 					app::AppMode::Search => {}
 				},
-				KeyCode::Up => match app.mode {
+				KeyCode::Up | KeyCode::Char('k') => match app.mode {
 					app::AppMode::Viewing => {
 						app.scroll_up(1);
 					},
