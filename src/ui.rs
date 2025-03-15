@@ -51,62 +51,72 @@ pub fn render_poem_text(version: &Version) -> String {
 			.collect::<Vec<_>>()
 			.join("\n");
 	}
-	if version.vertical.unwrap_or(false) {
-		let (_cols, rows) = terminal::size().unwrap_or((80, 24));
-		let viewport_height = rows.saturating_sub(3) as usize;
-		let poem_lines: Vec<&str> = version.text.lines().collect();
-		let width = poem_lines
+	let (_cols, rows) = terminal::size().unwrap_or((80, 24));
+	let viewport_height = rows.saturating_sub(3) as usize;
+	let lines: Vec<&str> = version.text.lines().collect();
+	let max_line_length = lines.iter().map(|l| l.trim().chars().count()).max().unwrap_or(0);
+	if max_line_length <= viewport_height {
+		let width = max_line_length;
+		let matrix: Vec<Vec<char>> = lines
 			.iter()
-			.map(|line| line.trim().chars().count())
-			.max()
-			.unwrap_or(0);
-		if width <= viewport_height {
-			let lines: Vec<Vec<char>> = poem_lines
-				.into_iter()
-				.map(|line| {
-					let mut chars: Vec<char> = line.trim().chars().collect();
-					while chars.len() < width {
-						chars.push('　');
-					}
-					chars
-				})
-				.collect();
-			if lines.is_empty() {
-				return String::new();
-			}
-			let height = lines.len();
-			return (0..width)
-				.map(|x| (0..height).rev().map(|y| lines[y][x]).collect::<String>())
-				.collect::<Vec<String>>()
-				.join("\n");
-		} else {
-			let text = version.text.replace("\n", "");
-			let total_chars = text.chars().count();
-			let num_columns = (total_chars + viewport_height - 1) / viewport_height;
-			let mut columns: Vec<Vec<char>> = Vec::with_capacity(num_columns);
-			let mut char_iter = text.chars();
-			for _ in 0..num_columns {
-				let mut col = Vec::with_capacity(viewport_height);
-				for _ in 0..viewport_height {
-					col.push(char_iter.next().unwrap_or(' '));
+			.map(|line| {
+				let mut v: Vec<char> = line.trim().chars().collect();
+				while v.len() < width {
+					v.push('　');
 				}
-				columns.push(col);
+				v
+			})
+			.collect();
+		let height = matrix.len();
+		return (0..width)
+			.map(|x| (0..height).rev().map(|y| matrix[y][x]).collect::<String>())
+			.collect::<Vec<String>>()
+			.join("\n");
+	} else {
+		let mut groups: Vec<Vec<Vec<char>>> = Vec::new();
+		for line in lines {
+			let chars: Vec<char> = line.trim().chars().collect();
+			let mut segments: Vec<Vec<char>> = Vec::new();
+			let mut start = 0;
+			while start < chars.len() {
+				let end = (start + viewport_height).min(chars.len());
+				let mut seg: Vec<char> = chars[start..end].to_vec();
+				while seg.len() < viewport_height {
+					seg.push('　');
+				}
+				segments.push(seg);
+				start += viewport_height;
 			}
 			if version.rtl.unwrap_or(false) {
-				columns.reverse();
+				segments.reverse();
 			}
-			let mut output_lines: Vec<String> = Vec::with_capacity(viewport_height);
-			for row in 0..viewport_height {
-				let mut line = String::new();
-				for col in &columns {
-					line.push(col[row]);
-				}
-				output_lines.push(line);
-			}
-			return output_lines.join("\n");
+			groups.push(segments);
 		}
+		let mut all_columns: Vec<Vec<char>> = Vec::new();
+		if version.rtl.unwrap_or(false) {
+			groups.reverse();
+			for group in groups {
+				for seg in group {
+					all_columns.push(seg);
+				}
+			}
+		} else {
+			for group in groups {
+				for seg in group {
+					all_columns.push(seg);
+				}
+			}
+		}
+		let mut output_lines: Vec<String> = Vec::with_capacity(viewport_height);
+		for row in 0..viewport_height {
+			let mut line = String::new();
+			for col in &all_columns {
+				line.push(col[row]);
+			}
+			output_lines.push(line);
+		}
+		return output_lines.join("\n");
 	}
-	String::new()
 }
 
 pub fn render_status_bar(items: Vec<(&str, &str)>) -> Paragraph<'static> {
