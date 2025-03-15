@@ -13,12 +13,13 @@ https://github.com/user-attachments/assets/4618727b-7302-44ae-917e-afab3d403ea3
 
 ## To do
 
+- [ ] Add filtering/search in the main menu
+- [ ] Add horizontal scrolling (to the left) when vertical/rtl poems are bigger than f.area()
+- [ ] Add vim keybindings for common interactions
 - [ ] Change version toggle to a pop-up menu with a list
 - [ ] Search the base directory for `.poem` files recursively 
 - [ ] Add a "browse by folder tree structure" option 
-- [ ] Allow exporting to pdf, md, and custom XHTML
 - [ ] Decide how to render epigraphs
-- [ ] Add some language-specific parsing (e.g. half-nonbreaking spaces `U+202F` instead of whitespaces before punctuation in French)
 - [ ] Record nicer demos
 
 ## Usage
