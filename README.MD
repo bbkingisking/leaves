@@ -10,15 +10,13 @@ https://github.com/user-attachments/assets/4618727b-7302-44ae-917e-afab3d403ea3
 - [x] Support for multiple versions (e.g. translations, different spellings, &c.) of the same poem
 - [x] Support for right-to-left (RTL) and vertical layouts without Unicode control characters (terminal emulators don't seem to like them)
 - [x] Smooth scrolling for long poems
+- [x] Add filtering/search 
 
 ## To do
 
-- [ ] Add filtering/search in the main menu
-- [ ] Add horizontal scrolling (to the left) when vertical/rtl poems are bigger than f.area()
 - [ ] Add vim keybindings for common interactions
 - [ ] Change version toggle to a pop-up menu with a list
 - [ ] Search the base directory for `.poem` files recursively 
-- [ ] Add a "browse by folder tree structure" option 
 - [ ] Decide how to render epigraphs
 - [ ] Record nicer demos
 
@@ -33,7 +31,7 @@ Very much intended for personal use only but if you want to try it out/build upo
 canonical:
   title: "Original Title"
   author: "Author Name"
-  language: "Original Language"
+  language: "Original Language" # ISO 639
   rtl: false      # Optional
   vertical: false # Optional
   text: |
@@ -41,16 +39,7 @@ canonical:
    line 2
    …
 
-other_version: # Optional
-  title: "Translated Title"
-  author: "Translator Name"
-  language: "Target Language"
-  rtl: false      # Optional
-  vertical: false # Optional
-  text: |
-   line 1
-   line 2
-   …
+other_version: # Optional, same possible sub-keys as above
 ```
 
 - It is currently hardcoded to look for files  with `.poem` extension in `~/Documents/poetry/`. Change in the source file if needed. 
