@@ -14,6 +14,7 @@ use ratatui::{
 	style::{Style, Color},
 	text::{Line, Span},
 };
+use textwrap;
 use std::{io, path::PathBuf};
 use app::App;
 use models::load_poems;
@@ -102,10 +103,22 @@ fn main() -> Result<(), io::Error> {
 						.constraints([Constraint::Min(1), Constraint::Length(1)].as_ref())
 						.split(inner_area);
 					let actual_viewport_height = content_chunks[0].height as usize;
-					let poem_para = Paragraph::new(poem_text.clone())
+					let max_width = content_chunks[0].width as usize;
+					let options = textwrap::Options::new(max_width)
+						.subsequent_indent("  ");
+					let wrapped_text: String = poem_text.lines()
+						.map(|line| {
+							if line.trim().is_empty() {
+								String::new()
+							} else {
+								textwrap::fill(line, options.clone())
+							}
+						})
+						.collect::<Vec<_>>()
+						.join("\n");
+					let poem_para = Paragraph::new(wrapped_text)
 						.style(Style::default().fg(Color::White))
 						.alignment(alignment)
-						.wrap(ratatui::widgets::Wrap { trim: false })
 						.scroll((scroll_offset, 0));
 					f.render_widget(poem_block.clone(), chunks[0]);
 					f.render_widget(poem_para, content_chunks[0]);
