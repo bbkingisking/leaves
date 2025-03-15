@@ -7,33 +7,6 @@ use ratatui::{
 use crossterm::terminal;
 use crate::models::Version;
 
-pub fn wrap_text(text: &str, max_width: usize) -> String {
-	let paragraphs: Vec<&str> = text.split('\n').collect();
-	let mut wrapped = Vec::new();
-	for paragraph in paragraphs {
-		let words: Vec<&str> = paragraph.split_whitespace().collect();
-		let mut lines = Vec::new();
-		let mut current_line = String::from("  ");
-		for word in words {
-			if current_line.len() + word.len() + 1 <= max_width {
-				if current_line.len() > 2 {
-					current_line.push(' ');
-				}
-				current_line.push_str(word);
-			} else {
-				lines.push(current_line);
-				current_line = String::from("  ");
-				current_line.push_str(word);
-			}
-		}
-		if !current_line.is_empty() {
-			lines.push(current_line);
-		}
-		wrapped.push(lines.join("\n"));
-	}
-	wrapped.join("\n")
-}
-
 pub fn parse_markdown(text: &str) -> String {
 	let mut result = String::new();
 	let mut in_bold = false;
@@ -76,7 +49,7 @@ pub fn render_poem_text(version: &Version) -> String {
 	}
 	if version.vertical.unwrap_or(false) {
 		if version.rtl.unwrap_or(false) {
-			let (cols, rows) = terminal::size().unwrap_or((80, 24));
+			let (_cols, rows) = terminal::size().unwrap_or((80, 24));
 			let viewport_height = rows.saturating_sub(3) as usize;
 			let text = version.text.replace("\n", "");
 			let total_chars = text.chars().count();

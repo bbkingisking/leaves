@@ -247,15 +247,11 @@ impl App {
 		}
 		"Filtered Poems".to_string()
 	}
-	pub fn scroll_up(&mut self) {
-		if self.scroll_position > 0 {
-			self.scroll_position = self.scroll_position.saturating_sub(1);
-		}
+	pub fn scroll_up(&mut self, delta: u16) {
+		self.scroll_position = self.scroll_position.saturating_sub(delta);
 	}
-	pub fn scroll_down(&mut self, max_scroll: u16) {
-		if self.scroll_position < max_scroll {
-			self.scroll_position = self.scroll_position.saturating_add(1);
-		}
+	pub fn scroll_down(&mut self, delta: u16, max_scroll: u16) {
+		self.scroll_position = (self.scroll_position.saturating_add(delta)).min(max_scroll);
 	}
 	pub fn next_poem(&mut self) {
 		match &self.filtered_poems {

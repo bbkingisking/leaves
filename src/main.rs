@@ -73,89 +73,54 @@ fn main() -> Result<(), io::Error> {
 			match app.mode {
 				app::AppMode::Viewing => {
 					let version = app.get_current_version();
-					let mut text = String::new();
+					let mut poem_text = String::new();
 					if let Some(epigraph) = &version.epigraph {
-						let max_width = version.text.lines().map(|line| line.chars().count()).max().unwrap_or(80);
-						text.push_str("  \n");
-						text.push_str(&ui::wrap_text(epigraph, max_width));
-						text.push('\n');
+						poem_text.push_str(epigraph);
+						poem_text.push('\n');
 					}
-					text.push_str(&ui::parse_markdown(&ui::render_poem_text(version)));
-					let lines: Vec<&str> = text.lines().collect();
-					let viewport_height = app.viewport_height.unwrap_or(chunks[0].height.saturating_sub(2)) as usize;
-					let has_scroll = lines.len() > viewport_height;
-					let title = Line::from(vec![
-						Span::raw(" "),
-						Span::styled(&version.author, Style::default().fg(Color::Yellow)),
-						Span::raw(" - "),
-						Span::styled(&version.title, Style::default().fg(Color::Yellow)),
-						Span::raw(" "),
-					]);
-					let poem_block = Block::default().title(title).borders(Borders::ALL);
-					let inner_area = poem_block.inner(chunks[0]);
-					let inner_chunks = Layout::default().direction(Direction::Horizontal).constraints([Constraint::Min(1), Constraint::Length(1)].as_ref()).split(inner_area);
-					if has_scroll {
-						let total_lines = lines.len();
-						let content_length = total_lines.saturating_sub(viewport_height).saturating_add(1);
-						let mut scrollbar_state = ScrollbarState::new(content_length)
-							.position(app.scroll_position as usize)
-							.viewport_content_length(viewport_height as usize);
-
-						let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
-							.begin_symbol(Some("▲"))
-							.end_symbol(Some("▼"))
-							.thumb_symbol("▐")
-							.track_symbol(Some("│"));
-
-						f.render_stateful_widget(scrollbar, inner_chunks[1], &mut scrollbar_state);
-					}
-					let visible_text = lines.iter().skip(app.scroll_position as usize).take(viewport_height).map(|line| {
-						let parsed = ui::parse_markdown(line);
-						let mut spans = Vec::new();
-						let mut current_text = String::new();
-						let mut current_style = Style::default();
-						let mut chars = parsed.chars().peekable();
-						while let Some(c) = chars.next() {
-							match c {
-								'*' if chars.peek() == Some(&'*') => {
-									chars.next();
-									if !current_text.is_empty() {
-										spans.push(Span::styled(current_text, current_style));
-										current_text = String::new();
-									}
-									current_style = if current_style.add_modifier.contains(ratatui::prelude::Modifier::BOLD) {
-										current_style.remove_modifier(ratatui::prelude::Modifier::BOLD)
-									} else {
-										current_style.add_modifier(ratatui::prelude::Modifier::BOLD)
-									};
-								},
-								'_' => {
-									if !current_text.is_empty() {
-										spans.push(Span::styled(current_text, current_style));
-										current_text = String::new();
-									}
-									current_style = if current_style.add_modifier.contains(ratatui::prelude::Modifier::ITALIC) {
-										current_style.remove_modifier(ratatui::prelude::Modifier::ITALIC)
-									} else {
-										current_style.add_modifier(ratatui::prelude::Modifier::ITALIC)
-									};
-								},
-								_ => current_text.push(c),
-							}
-						}
-						if !current_text.is_empty() {
-							spans.push(Span::styled(current_text, current_style));
-						}
-						Line::from(spans)
-					}).collect::<Vec<Line>>();
+					poem_text.push_str(&ui::render_poem_text(version));
 					let alignment = if version.rtl.unwrap_or(false) {
 						ratatui::layout::Alignment::Right
 					} else {
 						ratatui::layout::Alignment::Left
 					};
-					f.render_widget(poem_block, chunks[0]);
-					let poem_para = Paragraph::new(visible_text).style(Style::default().fg(Color::White)).alignment(alignment);
-					f.render_widget(poem_para, inner_chunks[0]);
+					// Use the overall chunk height to compute an approximate viewport height
+					let viewport_height = chunks[0].height.saturating_sub(2) as usize;
+					let total_lines = poem_text.lines().count();
+					let max_scroll = total_lines.saturating_sub(viewport_height) as u16;
+					let scroll_offset = app.scroll_position.min(max_scroll);
+					let title = Line::from(vec![
+						Span::raw(" "),
+						Span::styled(&version.author, Style::default().fg(Color::Yellow)),
+						Span::raw(" - "),
+						Span::styled(&version.title, Style::default().fg(Color::Yellow))
+					]);
+					let poem_block = Block::default().title(title).borders(Borders::ALL);
+					let inner_area = poem_block.inner(chunks[0]);
+					let content_chunks = Layout::default()
+						.direction(Direction::Horizontal)
+						.constraints([Constraint::Min(1), Constraint::Length(1)].as_ref())
+						.split(inner_area);
+					let actual_viewport_height = content_chunks[0].height as usize;
+					let poem_para = Paragraph::new(poem_text.clone())
+						.style(Style::default().fg(Color::White))
+						.alignment(alignment)
+						.wrap(ratatui::widgets::Wrap { trim: false })
+						.scroll((scroll_offset, 0));
+					f.render_widget(poem_block.clone(), chunks[0]);
+					f.render_widget(poem_para, content_chunks[0]);
+					if total_lines > actual_viewport_height {
+						let content_length = total_lines.saturating_sub(actual_viewport_height).saturating_add(1);
+						let mut scrollbar_state = ScrollbarState::new(content_length)
+							.position(app.scroll_position as usize)
+							.viewport_content_length(actual_viewport_height);
+						let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
+							.begin_symbol(Some("▲"))
+							.end_symbol(Some("▼"))
+							.thumb_symbol("▐")
+							.track_symbol(Some("│"));
+						f.render_stateful_widget(scrollbar, content_chunks[1], &mut scrollbar_state);
+					}
 				},
 				app::AppMode::Menu => {
 					let items = vec![
@@ -257,7 +222,7 @@ fn main() -> Result<(), io::Error> {
 						let lines = text.lines().count();
 						if let Some(viewport_height) = app.viewport_height {
 							let max_scroll = lines.saturating_sub(viewport_height as usize) as u16;
-							app.scroll_down(max_scroll);
+							app.scroll_down(1, max_scroll);
 						}
 					},
 					app::AppMode::AuthorList => app.next_author(),
@@ -273,7 +238,7 @@ fn main() -> Result<(), io::Error> {
 				},
 				KeyCode::Up => match app.mode {
 					app::AppMode::Viewing => {
-						app.scroll_up();
+						app.scroll_up(1);
 					},
 					app::AppMode::AuthorList => app.previous_author(),
 					app::AppMode::LanguageList => app.previous_language(),
