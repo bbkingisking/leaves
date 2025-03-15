@@ -45,12 +45,41 @@ pub fn render_poem_text(version: &Version) -> String {
 	}
 	if !version.vertical.unwrap_or(false) && version.rtl.unwrap_or(false) {
 		let text = parse_markdown(&version.text);
-		return text.lines().map(|line| line.chars().rev().collect::<String>()).collect::<Vec<_>>().join("\n");
+		return text
+			.lines()
+			.map(|line| line.chars().rev().collect::<String>())
+			.collect::<Vec<_>>()
+			.join("\n");
 	}
 	if version.vertical.unwrap_or(false) {
-		if version.rtl.unwrap_or(false) {
-			let (_cols, rows) = terminal::size().unwrap_or((80, 24));
-			let viewport_height = rows.saturating_sub(3) as usize;
+		let (_cols, rows) = terminal::size().unwrap_or((80, 24));
+		let viewport_height = rows.saturating_sub(3) as usize;
+		let poem_lines: Vec<&str> = version.text.lines().collect();
+		let width = poem_lines
+			.iter()
+			.map(|line| line.trim().chars().count())
+			.max()
+			.unwrap_or(0);
+		if width <= viewport_height {
+			let lines: Vec<Vec<char>> = poem_lines
+				.into_iter()
+				.map(|line| {
+					let mut chars: Vec<char> = line.trim().chars().collect();
+					while chars.len() < width {
+						chars.push('　');
+					}
+					chars
+				})
+				.collect();
+			if lines.is_empty() {
+				return String::new();
+			}
+			let height = lines.len();
+			return (0..width)
+				.map(|x| (0..height).rev().map(|y| lines[y][x]).collect::<String>())
+				.collect::<Vec<String>>()
+				.join("\n");
+		} else {
 			let text = version.text.replace("\n", "");
 			let total_chars = text.chars().count();
 			let num_columns = (total_chars + viewport_height - 1) / viewport_height;
@@ -59,15 +88,13 @@ pub fn render_poem_text(version: &Version) -> String {
 			for _ in 0..num_columns {
 				let mut col = Vec::with_capacity(viewport_height);
 				for _ in 0..viewport_height {
-					if let Some(c) = char_iter.next() {
-						col.push(c);
-					} else {
-						col.push(' ');
-					}
+					col.push(char_iter.next().unwrap_or(' '));
 				}
 				columns.push(col);
 			}
-			columns.reverse();
+			if version.rtl.unwrap_or(false) {
+				columns.reverse();
+			}
 			let mut output_lines: Vec<String> = Vec::with_capacity(viewport_height);
 			for row in 0..viewport_height {
 				let mut line = String::new();
@@ -77,22 +104,6 @@ pub fn render_poem_text(version: &Version) -> String {
 				output_lines.push(line);
 			}
 			return output_lines.join("\n");
-		} else {
-			let width = version.text.lines().map(|line| line.trim().chars().count()).max().unwrap_or(0);
-			let lines: Vec<Vec<char>> = version.text.lines().map(|line| {
-				let mut chars: Vec<char> = line.trim().chars().collect();
-				while chars.len() < width {
-					chars.push('　');
-				}
-				chars
-			}).collect();
-			if lines.is_empty() {
-				return String::new();
-			}
-			let height = lines.len();
-			return (0..width).map(|x| {
-				(0..height).rev().map(|y| lines[y][x]).collect::<String>()
-			}).collect::<Vec<String>>().join("\n");
 		}
 	}
 	String::new()
