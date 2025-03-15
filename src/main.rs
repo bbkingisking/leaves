@@ -9,7 +9,7 @@ use crossterm::{
 };
 use ratatui::{
 	Terminal,
-	widgets::{Block, Borders, Paragraph, List, ListItem},
+	widgets::{Block, Borders, Paragraph, List, ListItem, Scrollbar, ScrollbarOrientation, ScrollbarState},
 	layout::{Constraint, Direction, Layout},
 	style::{Style, Color},
 	text::{Line, Span},
@@ -94,29 +94,21 @@ fn main() -> Result<(), io::Error> {
 					let poem_block = Block::default().title(title).borders(Borders::ALL);
 					let inner_area = poem_block.inner(chunks[0]);
 					let inner_chunks = Layout::default().direction(Direction::Horizontal).constraints([Constraint::Min(1), Constraint::Length(1)].as_ref()).split(inner_area);
-					let scroll_indicator = if has_scroll {
-						let total_lines = lines.len() as f64;
-						let visible_lines = viewport_height as f64;
-						let scroll_pos = app.scroll_position as f64;
-						let scroll_height = ((visible_lines / total_lines) * (viewport_height - 2) as f64).max(1.0) as usize;
-						let max_scroll = total_lines - visible_lines;
-						let scroll_pos = if max_scroll > 0.0 {
-							((scroll_pos / max_scroll) * (viewport_height - scroll_height - 2) as f64) + 1.0
-						} else {
-							1.0
-						} as usize;
-						let mut indicator = vec!["│"; viewport_height];
-						indicator[0] = "▲";
-						indicator[viewport_height - 1] = "▼";
-						for i in scroll_pos..scroll_pos + scroll_height {
-							if i > 0 && i < viewport_height - 1 {
-								indicator[i] = "▐";
-							}
-						}
-						indicator.join("\n")
-					} else {
-						String::new()
-					};
+					if has_scroll {
+						let total_lines = lines.len();
+						let content_length = total_lines.saturating_sub(viewport_height).saturating_add(1);
+						let mut scrollbar_state = ScrollbarState::new(content_length)
+							.position(app.scroll_position as usize)
+							.viewport_content_length(viewport_height as usize);
+
+						let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
+							.begin_symbol(Some("▲"))
+							.end_symbol(Some("▼"))
+							.thumb_symbol("▐")
+							.track_symbol(Some("│"));
+
+						f.render_stateful_widget(scrollbar, inner_chunks[1], &mut scrollbar_state);
+					}
 					let visible_text = lines.iter().skip(app.scroll_position as usize).take(viewport_height).map(|line| {
 						let parsed = ui::parse_markdown(line);
 						let mut spans = Vec::new();
@@ -164,10 +156,6 @@ fn main() -> Result<(), io::Error> {
 					f.render_widget(poem_block, chunks[0]);
 					let poem_para = Paragraph::new(visible_text).style(Style::default().fg(Color::White)).alignment(alignment);
 					f.render_widget(poem_para, inner_chunks[0]);
-					if has_scroll {
-						let scrollbar = Paragraph::new(scroll_indicator).style(Style::default().fg(Color::DarkGray));
-						f.render_widget(scrollbar, inner_chunks[1]);
-					}
 				},
 				app::AppMode::Menu => {
 					let items = vec![
