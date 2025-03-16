@@ -6,6 +6,8 @@ use ratatui::{
 };
 use crossterm::terminal;
 use crate::models::Version;
+use unicode_bidi::BidiInfo;
+use std::borrow::Cow;
 
 pub fn parse_markdown(text: &str) -> String {
 	let mut result = String::new();
@@ -50,11 +52,7 @@ pub fn render_poem_text(version: &Version) -> String {
 	// Parse the markdown, then reverse each line for proper RTL display.
 	if !version.vertical.unwrap_or(false) && version.rtl.unwrap_or(false) {
 		let text = parse_markdown(&version.text);
-		return text
-			.lines()
-			.map(|line| line.chars().rev().collect::<String>())
-			.collect::<Vec<_>>()
-			.join("\n");
+		return process_rtl_text(&text);
 	}
 
 	// Case 3: Vertical formatting is enabled.
@@ -160,4 +158,16 @@ pub fn render_status_bar(items: Vec<(&str, &str)>) -> Paragraph<'static> {
 		spans.pop();
 	}
 	Paragraph::new(Line::from(spans)).alignment(Alignment::Left)
+}
+
+fn process_rtl_text(text: &str) -> String {
+	text
+		.lines()
+		.map(|line| {
+			let bidi_info = BidiInfo::new(line, None);
+			let para = bidi_info.paragraphs.first().unwrap();
+			bidi_info.reorder_line(para, para.range.clone()).into_owned()
+		})
+		.collect::<Vec<_>>()
+		.join("\n")
 }

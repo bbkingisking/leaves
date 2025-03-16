@@ -10,3 +10,4 @@ serde = { version = "1.0", features = ["derive"] }
 serde_yaml = "0.9"
 rand = "0.8"
 textwrap = "0.16.2"
+unicode-bidi = "0.3.18"
