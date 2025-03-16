@@ -1,6 +1,7 @@
 mod models;
 mod app;
 mod ui;
+mod utils; 
 
 use crossterm::{
 	event::{self, Event, KeyCode, KeyModifiers},
@@ -19,6 +20,7 @@ use std::{io, path::PathBuf};
 use app::App;
 use models::load_poems;
 use rand::Rng;
+use crate::utils::get_language_name;
 
 fn main() -> Result<(), io::Error> {
 	enable_raw_mode()?;
@@ -175,10 +177,22 @@ fn main() -> Result<(), io::Error> {
 				},
 				app::AppMode::LanguageList => {
 					let languages = app.get_sorted_languages();
-					let items: Vec<ListItem> = languages.iter().map(|lang| ListItem::new(format!("{} ({})", lang, app.language_counts[lang]))).collect();
-					let language_list = List::new(items).block(Block::default().title(Span::styled("Languages", Style::default().fg(Color::Yellow))).borders(Borders::ALL)).style(Style::default().fg(Color::White)).highlight_style(Style::default().fg(Color::Black).bg(Color::White));
+					let items: Vec<ListItem> = languages.iter()
+						.map(|lang| {
+							let display_name = get_language_name(lang).unwrap_or(lang);
+							ListItem::new(format!("{} ({})", display_name, app.language_counts[lang]))
+						})
+						.collect();
+				
+					let language_list = List::new(items)
+						.block(Block::default()
+							.title(Span::styled("Languages", Style::default().fg(Color::Yellow)))
+							.borders(Borders::ALL))
+						.style(Style::default().fg(Color::White))
+						.highlight_style(Style::default().fg(Color::Black).bg(Color::White));
+				
 					f.render_stateful_widget(language_list, chunks[0], &mut app.language_list_state);
-				},
+				},				
 				app::AppMode::FilteredList => {
 					if let Some(indices) = &app.filtered_poems {
 						let items: Vec<ListItem> = indices.iter().map(|&idx| {

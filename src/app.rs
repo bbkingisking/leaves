@@ -178,7 +178,7 @@ impl App {
 	}
 	pub fn get_sorted_languages(&self) -> Vec<String> {
 		let mut languages: Vec<_> = self.language_counts.keys().cloned().collect();
-		languages.sort();
+		languages.sort_by_key(|lang| std::cmp::Reverse(self.language_counts[lang]));
 		languages
 	}
 	pub fn next_language(&mut self) {
