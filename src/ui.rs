@@ -7,7 +7,6 @@ use ratatui::{
 use crossterm::terminal;
 use crate::models::Version;
 use unicode_bidi::BidiInfo;
-use std::borrow::Cow;
 
 pub fn parse_markdown(text: &str) -> String {
 	let mut result = String::new();
