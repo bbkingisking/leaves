@@ -23,7 +23,7 @@ pub struct Version {
 
 pub fn load_poems() -> io::Result<Vec<Poem>> {
 	let home = std::env::var("HOME").expect("HOME environment variable not set");
-	let poems_dir = PathBuf::from(home).join("Documents").join("poetry");
+	let poems_dir = PathBuf::from(home).join("literature").join("poetry");
 	let mut poems = Vec::new();
 	for entry in fs::read_dir(poems_dir)? {
 		let entry = entry?;

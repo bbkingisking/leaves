@@ -350,7 +350,7 @@ fn main() -> Result<(), io::Error> {
 					match app.mode {
 						app::AppMode::Viewing => {
 							let home = std::env::var("HOME").expect("HOME not set");
-							let poem_path = PathBuf::from(home).join("Documents").join("poetry").join(&app.poems[app.current_poem].filename);
+							let poem_path = PathBuf::from(home).join("literature").join("poetry").join(&app.poems[app.current_poem].filename);
 							#[cfg(target_os = "macos")]
 							std::process::Command::new("open").arg(&poem_path).spawn().expect("Failed to open file");
 							#[cfg(target_os = "linux")]
