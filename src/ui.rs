@@ -1,12 +1,13 @@
-use ratatui::{
-	widgets::Paragraph,
-	layout::Alignment,
-	text::{Line, Span},
-	style::{Style, Color},
-};
 use crossterm::terminal;
 use crate::models::Version;
 use unicode_bidi::BidiInfo;
+use ratatui::{
+    layout::{Alignment, Constraint, Layout, Rect},
+    widgets::{Paragraph},
+    text::{Line, Span},
+    style::{Style, Color},
+    prelude::*,
+};
 
 pub fn parse_markdown(text: &str) -> String {
 	let mut result = String::new();
@@ -169,4 +170,24 @@ fn process_rtl_text(text: &str) -> String {
 		})
 		.collect::<Vec<_>>()
 		.join("\n")
+}
+
+pub fn popup_area(area: Rect, width_percent: u16, height_percent: u16) -> Rect {
+	let popup_layout = Layout::default()
+		.direction(Direction::Vertical)
+		.constraints([
+			Constraint::Percentage((100 - height_percent) / 2),
+			Constraint::Percentage(height_percent),
+			Constraint::Percentage((100 - height_percent) / 2),
+		])
+		.split(area);
+
+	Layout::default()
+		.direction(Direction::Horizontal)
+		.constraints([
+			Constraint::Percentage((100 - width_percent) / 2),
+			Constraint::Percentage(width_percent),
+			Constraint::Percentage((100 - width_percent) / 2),
+		])
+		.split(popup_layout[1])[1]
 }

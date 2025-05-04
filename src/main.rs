@@ -10,7 +10,7 @@ use crossterm::{
 };
 use ratatui::{
 	Terminal,
-	widgets::{Block, Borders, Paragraph, List, ListItem, Scrollbar, ScrollbarOrientation, ScrollbarState},
+	widgets::{Block, Borders, Paragraph, List, ListItem, Scrollbar, ScrollbarOrientation, ScrollbarState, Clear},
 	layout::{Constraint, Direction, Layout},
 	style::{Style, Color},
 	text::{Line, Span},
@@ -21,6 +21,7 @@ use app::App;
 use models::load_poems;
 use rand::Rng;
 use crate::utils::get_language_name;
+use crate::ui::popup_area;
 
 fn main() -> Result<(), io::Error> {
 	enable_raw_mode()?;
@@ -86,7 +87,7 @@ fn main() -> Result<(), io::Error> {
 				f.render_stateful_widget(search_list, chunks[0], &mut app.search_list_state);
 			}
 			match app.mode {
-				app::AppMode::Viewing => {
+				app::AppMode::Viewing | app::AppMode::VersionSelect => {
 					let version = app.get_current_version();
 					let mut poem_text = String::new();
 					if let Some(epigraph) = &version.epigraph {
@@ -223,6 +224,30 @@ fn main() -> Result<(), io::Error> {
 				}
 				app::AppMode::Search => {} // No rendering here since search is handled separately
 			}
+
+			if let app::AppMode::VersionSelect = app.mode {
+				let popup = popup_area(f.size(), 50, 40);
+				f.render_widget(Clear, popup);
+
+				let poem = &app.poems[app.current_poem];
+				let versions: Vec<String> = std::iter::once("canonical".to_string())
+					.chain(poem.other_versions.keys().cloned())
+					.collect();
+				let items: Vec<ListItem> = versions
+					.iter()
+					.map(|v| {
+						ListItem::new(v.to_string())
+					})
+					.collect();
+				let list = List::new(items)
+					.block(Block::default()
+						.title("Select Version")
+						.borders(Borders::ALL)
+						.border_type(ratatui::widgets::BorderType::Double))
+					.highlight_style(Style::default().fg(Color::Black).bg(Color::White));
+				f.render_stateful_widget(list, popup, &mut app.version_list_state);
+			}
+
 			f.render_widget(status_bar, chunks[1]);
 		})?;
 		if let Event::Key(key) = event::read()? {
@@ -268,7 +293,12 @@ fn main() -> Result<(), io::Error> {
 			}
 			match key.code {
 				KeyCode::Char('q') => break,
-				KeyCode::Char(':') => {
+				KeyCode::Esc => {
+					if let app::AppMode::VersionSelect = app.mode {
+						app.mode = app::AppMode::Viewing;
+					}
+				}
+				KeyCode::Char('/') => {
 					app.mode = app::AppMode::Search;
 					app.search_query.clear();
 					app.search_results.clear();
@@ -296,9 +326,11 @@ fn main() -> Result<(), io::Error> {
 				KeyCode::Char('m') => {
 					app.mode = app::AppMode::Menu;
 				},
-				KeyCode::Char('s') => match app.mode {
-					app::AppMode::Viewing => app.toggle_version(),
-					_ => {}
+				KeyCode::Char('s') => {
+					if let app::AppMode::Viewing = app.mode {
+						app.version_list_state.select(Some(0));
+						app.mode = app::AppMode::VersionSelect;
+					}
 				},
 				KeyCode::Right => match app.mode {
 					app::AppMode::Viewing => app.next_poem(),
@@ -328,7 +360,16 @@ fn main() -> Result<(), io::Error> {
                             app.menu_state.select(Some(new_index));
                         }
                     },
-					app::AppMode::Search => {}
+					app::AppMode::Search => {},
+					app::AppMode::VersionSelect => {
+						let poem = &app.poems[app.current_poem];
+						let versions_len = 1 + poem.other_versions.len();
+						let i = match app.version_list_state.selected() {
+							Some(i) => (i + 1) % versions_len,
+							None => 0,
+						};
+						app.version_list_state.select(Some(i));
+					}
 				},
 				KeyCode::Up | KeyCode::Char('k') => match app.mode {
 					app::AppMode::Viewing => {
@@ -345,7 +386,16 @@ fn main() -> Result<(), io::Error> {
                             app.menu_state.select(Some(new_index));
                         }
                     },
-					app::AppMode::Search => {}
+					app::AppMode::Search => {},
+					app::AppMode::VersionSelect => {
+						let poem = &app.poems[app.current_poem];
+						let versions_len = 1 + poem.other_versions.len();
+						let i = match app.version_list_state.selected() {
+							Some(i) => if i == 0 { versions_len - 1 } else { i - 1 },
+							None => 0,
+						};
+						app.version_list_state.select(Some(i));
+					}
 				},
 				KeyCode::Char('e') if key.modifiers.contains(KeyModifiers::CONTROL) => {
 					match app.mode {
@@ -362,11 +412,23 @@ fn main() -> Result<(), io::Error> {
 						_ => {}
 					}
 				},
-				KeyCode::Enter => match app.mode {
-					app::AppMode::AuthorList => app.select_current_author(),
-					app::AppMode::LanguageList => app.select_current_language(),
-					app::AppMode::TitleList => app.select_current_title(),
-					app::AppMode::FilteredList => app.select_current_filtered(),
+					KeyCode::Enter => match app.mode {
+						app::AppMode::AuthorList => app.select_current_author(),
+						app::AppMode::LanguageList => app.select_current_language(),
+						app::AppMode::TitleList => app.select_current_title(),
+						app::AppMode::FilteredList => app.select_current_filtered(),
+						app::AppMode::VersionSelect => {
+							let poem = &app.poems[app.current_poem];
+							let versions: Vec<String> = std::iter::once("canonical".to_string())
+								.chain(poem.other_versions.keys().cloned())
+								.collect();
+							if let Some(i) = app.version_list_state.selected() {
+								if let Some(selected_version) = versions.get(i) {
+									app.current_version = selected_version.clone();
+									app.mode = app::AppMode::Viewing;
+								}
+							}
+						}
 					app::AppMode::Menu => {
 						match app.menu_state.selected() {
 							Some(0) => app.mode = app::AppMode::AuthorList,

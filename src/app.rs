@@ -11,6 +11,7 @@ pub enum AppMode {
 	TitleList,
 	FilteredList,
 	Search,
+	VersionSelect,
 }
 
 pub struct App {
@@ -32,6 +33,7 @@ pub struct App {
 	pub search_query: String,
 	pub search_list_state: ListState,
 	pub search_results: Vec<usize>,
+	pub version_list_state: ListState,
 }
 
 impl App {
@@ -79,17 +81,11 @@ impl App {
 				state
 			},
 			search_results: Vec::new(),
-		}
-	}
-	pub fn toggle_version(&mut self) {
-		let poem = &self.poems[self.current_poem];
-		let versions: Vec<String> = std::iter::once("canonical".to_string())
-			.chain(poem.other_versions.keys().cloned())
-			.collect();
-		if versions.len() > 1 {
-			let current_idx = versions.iter().position(|v| v == &self.current_version).unwrap_or(0);
-			let next_idx = (current_idx + 1) % versions.len();
-			self.current_version = versions[next_idx].clone();
+			version_list_state: {
+				let mut state = ListState::default();
+				state.select(Some(0));
+				state
+			},
 		}
 	}
 	pub fn get_current_version(&self) -> &Version {
