@@ -80,7 +80,7 @@ fn main() -> Result<(), io::Error> {
 					ListItem::new(format!("{} - {}", poem.canonical.author, poem.canonical.title))
 				}).collect();
 				let search_list = List::new(items)
-					.block(Block::default().title(Span::styled(format!("Search: {}", app.search_query), Style::default().fg(Color::Yellow))).borders(Borders::ALL))
+					.block(Block::default().title(Span::styled(format!("Search: {} ", app.search_query), Style::default().fg(Color::Yellow))).borders(Borders::ALL))
 					.style(Style::default().fg(Color::White))
 					.highlight_style(Style::default().fg(Color::Black).bg(Color::White));
 				f.render_stateful_widget(search_list, chunks[0], &mut app.search_list_state);
