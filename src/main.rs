@@ -44,7 +44,7 @@ fn main() -> Result<(), io::Error> {
 						if app.filtered_poems.is_none() && app.previous_mode.is_none() {
 							("m/backspace", "menu")
 						} else {
-							("m", "menu")
+							("m", "main menu")
 						},
 						("←/→", "navigate poems")
 					];
@@ -60,11 +60,16 @@ fn main() -> Result<(), io::Error> {
 					if !app.poems[app.current_poem].other_versions.is_empty() {
 						items.push(("s", "switch version"));
 					}
-					items.push(("ctrl+e", "edit"));
+					// items.push(("ctrl+e", "edit"));
 					ui::render_status_bar(items)
 				},
 				app::AppMode::Menu => ui::render_status_bar(vec![
 					("q", "quit"),
+					("↑/↓", "select"),
+					("enter", "choose")
+				]),
+				app::AppMode::VersionSelect => ui::render_status_bar(vec![
+					("Esc", "exit"),
 					("↑/↓", "select"),
 					("enter", "choose")
 				]),
