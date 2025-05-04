@@ -108,7 +108,8 @@ fn main() -> Result<(), io::Error> {
 						Span::raw(" "),
 						Span::styled(&version.author, Style::default().fg(Color::Yellow)),
 						Span::raw(" - "),
-						Span::styled(&version.title, Style::default().fg(Color::Yellow))
+						Span::styled(&version.title, Style::default().fg(Color::Yellow)),
+						Span::raw(" ")
 					]);
 					let poem_block = Block::default().title(title).borders(Borders::ALL);
 					let inner_area = poem_block.inner(chunks[0]);
