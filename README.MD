@@ -2,7 +2,7 @@
 
 A TUI (Terminal User Interface) application for reading poetry. Just learning `rust` and `ratatui`.
 
-https://github.com/user-attachments/assets/4618727b-7302-44ae-917e-afab3d403ea3
+https://github.com/user-attachments/assets/904d594a-8489-4d8d-98bc-cf3f6d377762
 
 ## Features
 
