@@ -57,7 +57,7 @@ fn main() -> Result<(), io::Error> {
 					if app.filtered_poems.is_some() {
 						items.push(("backspace", "back to list"));
 					}
-					if !app.poems[app.current_poem].other_versions.is_empty() {
+					if app.poems[app.current_poem].versions.len() > 1 {
 						items.push(("s", "switch version"));
 					}
 					// items.push(("ctrl+e", "edit"));
@@ -83,7 +83,13 @@ fn main() -> Result<(), io::Error> {
 			if app.mode == app::AppMode::Search {
 				let items: Vec<ListItem> = app.search_results.iter().map(|&idx| {
 					let poem = &app.poems[idx];
-					ListItem::new(format!("{} - {}", poem.canonical.author, poem.canonical.title))
+					if let Some(canonical) = poem.canonical() {
+						let author = canonical.author.as_deref().unwrap_or("Unknown");
+						let title = canonical.title.as_deref().unwrap_or("Untitled");
+						ListItem::new(format!("{} - {}", author, title))
+					} else {
+						ListItem::new("Unknown poem".to_string())
+					}
 				}).collect();
 				let search_list = List::new(items)
 					.block(Block::default().title(Span::styled(format!("Search: {} ", app.search_query), Style::default().fg(Color::Yellow))).borders(Borders::ALL))
@@ -112,9 +118,9 @@ fn main() -> Result<(), io::Error> {
 					let scroll_offset = app.scroll_position.min(max_scroll);
 					let title = Line::from(vec![
 						Span::raw(" "),
-						Span::styled(&version.author, Style::default().fg(Color::Yellow)),
+						Span::styled(version.author.as_deref().unwrap_or("Unknown"), Style::default().fg(Color::Yellow)),
 						Span::raw(" - "),
-						Span::styled(&version.title, Style::default().fg(Color::Yellow)),
+						Span::styled(version.title.as_deref().unwrap_or("Untitled"), Style::default().fg(Color::Yellow)),
 						Span::raw(" ")
 					]);
 					let poem_block = Block::default().title(title).borders(Borders::ALL);
@@ -205,21 +211,49 @@ fn main() -> Result<(), io::Error> {
 						let items: Vec<ListItem> = indices.iter().map(|&idx| {
 							let poem = &app.poems[idx];
 							let display_text = match app.previous_mode {
-								Some(app::AppMode::AuthorList) => poem.canonical.title.clone(),
+								Some(app::AppMode::AuthorList) => {
+									if let Some(canonical) = poem.canonical() {
+										canonical.title.as_deref().unwrap_or("Untitled").to_string()
+									} else {
+										"Untitled".to_string()
+									}
+								},
 								Some(app::AppMode::LanguageList) => {
 									if let Some(lang_index) = app.language_list_state.selected() {
 										let languages = app.get_sorted_languages();
 										if let Some(language) = languages.get(lang_index) {
 											let (version, _found) = app.get_version_in_language(idx, language);
-											format!("{} - {}", version.author, version.title)
+											let author = version.author.as_deref().unwrap_or("Unknown");
+											let title = version.title.as_deref().unwrap_or("Untitled");
+											format!("{} - {}", author, title)
 										} else {
-											format!("{} - {}", poem.canonical.author, poem.canonical.title)
+											if let Some(canonical) = poem.canonical() {
+												let author = canonical.author.as_deref().unwrap_or("Unknown");
+												let title = canonical.title.as_deref().unwrap_or("Untitled");
+												format!("{} - {}", author, title)
+											} else {
+												"Unknown - Untitled".to_string()
+											}
 										}
 									} else {
-										format!("{} - {}", poem.canonical.author, poem.canonical.title)
+										if let Some(canonical) = poem.canonical() {
+											let author = canonical.author.as_deref().unwrap_or("Unknown");
+											let title = canonical.title.as_deref().unwrap_or("Untitled");
+											format!("{} - {}", author, title)
+										} else {
+											"Unknown - Untitled".to_string()
+										}
 									}
 								},
-								_ => format!("{} - {}", poem.canonical.author, poem.canonical.title),
+								_ => {
+									if let Some(canonical) = poem.canonical() {
+										let author = canonical.author.as_deref().unwrap_or("Unknown");
+										let title = canonical.title.as_deref().unwrap_or("Untitled");
+										format!("{} - {}", author, title)
+									} else {
+										"Unknown - Untitled".to_string()
+									}
+								},
 							};
 							ListItem::new(display_text)
 						}).collect();
@@ -235,9 +269,7 @@ fn main() -> Result<(), io::Error> {
 				f.render_widget(Clear, popup);
 
 				let poem = &app.poems[app.current_poem];
-				let versions: Vec<String> = std::iter::once("canonical".to_string())
-					.chain(poem.other_versions.keys().cloned())
-					.collect();
+				let versions: Vec<String> = poem.versions.keys().cloned().collect();
 				let items: Vec<ListItem> = versions
 					.iter()
 					.map(|v| {
@@ -368,7 +400,7 @@ fn main() -> Result<(), io::Error> {
 					app::AppMode::Search => {},
 					app::AppMode::VersionSelect => {
 						let poem = &app.poems[app.current_poem];
-						let versions_len = 1 + poem.other_versions.len();
+						let versions_len = poem.versions.len();
 						let i = match app.version_list_state.selected() {
 							Some(i) => (i + 1) % versions_len,
 							None => 0,
@@ -394,7 +426,7 @@ fn main() -> Result<(), io::Error> {
 					app::AppMode::Search => {},
 					app::AppMode::VersionSelect => {
 						let poem = &app.poems[app.current_poem];
-						let versions_len = 1 + poem.other_versions.len();
+						let versions_len = poem.versions.len();
 						let i = match app.version_list_state.selected() {
 							Some(i) => if i == 0 { versions_len - 1 } else { i - 1 },
 							None => 0,
@@ -424,9 +456,7 @@ fn main() -> Result<(), io::Error> {
 						app::AppMode::FilteredList => app.select_current_filtered(),
 						app::AppMode::VersionSelect => {
 							let poem = &app.poems[app.current_poem];
-							let versions: Vec<String> = std::iter::once("canonical".to_string())
-								.chain(poem.other_versions.keys().cloned())
-								.collect();
+							let versions: Vec<String> = poem.versions.keys().cloned().collect();
 							if let Some(i) = app.version_list_state.selected() {
 								if let Some(selected_version) = versions.get(i) {
 									app.current_version = selected_version.clone();

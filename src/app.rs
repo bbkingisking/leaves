@@ -38,14 +38,14 @@ pub struct App {
 
 impl App {
 	pub fn new(poems: Vec<Poem>) -> Self {
-		let author_counts = poems.iter().map(|p| p.canonical.author.clone()).fold(HashMap::new(), |mut map, author| {
-			*map.entry(author).or_insert(0) += 1;
+		let author_counts = poems.iter().filter_map(|p| p.canonical()).filter_map(|v| v.author.as_ref()).fold(HashMap::new(), |mut map, author| {
+			*map.entry(author.clone()).or_insert(0) += 1;
 			map
 		});
 		let language_counts = poems.iter().flat_map(|p| {
-			std::iter::once(p.canonical.language.clone()).chain(p.other_versions.values().map(|v| v.language.clone()))
+			p.versions.values().filter_map(|v| v.language.as_ref())
 		}).fold(HashMap::new(), |mut map, lang| {
-			*map.entry(lang).or_insert(0) += 1;
+			*map.entry(lang.clone()).or_insert(0) += 1;
 			map
 		});
 		let mut list_state = ListState::default();
@@ -90,14 +90,14 @@ impl App {
 	}
 	pub fn get_current_version(&self) -> &Version {
 		let poem = &self.poems[self.current_poem];
-		if self.current_version == "canonical" {
-			&poem.canonical
-		} else {
-			poem.other_versions.get(&self.current_version).unwrap_or(&poem.canonical)
-		}
+		poem.versions.get(&self.current_version)
+			.or_else(|| poem.canonical())
+			.expect("Poem should have at least a canonical version")
 	}
 	pub fn get_sorted_titles(&self) -> Vec<(usize, String)> {
-		let mut titles: Vec<_> = self.poems.iter().enumerate().map(|(i, p)| (i, p.canonical.title.clone())).collect();
+		let mut titles: Vec<_> = self.poems.iter().enumerate().filter_map(|(i, p)| {
+			p.canonical().and_then(|v| v.title.as_ref()).map(|title| (i, title.clone()))
+		}).collect();
 		titles.sort_by(|a, b| a.1.to_lowercase().cmp(&b.1.to_lowercase()));
 		titles
 	}
@@ -157,7 +157,7 @@ impl App {
 				self.filtered_poems = Some(
 					self.poems.iter()
 						.enumerate()
-						.filter(|(_, poem)| &poem.canonical.author == author)
+						.filter(|(_, poem)| poem.canonical().and_then(|v| v.author.as_ref()) == Some(author))
 						.map(|(i, _)| i)
 						.collect()
 				);
@@ -199,11 +199,8 @@ impl App {
 			if let Some(language) = languages.get(index) {
 				let mut filtered_with_versions = Vec::new();
 				for (i, poem) in self.poems.iter().enumerate() {
-					if poem.canonical.language == *language {
-						filtered_with_versions.push((i, "canonical".to_string()));
-					}
-					for (version_key, version) in &poem.other_versions {
-						if version.language == *language {
+					for (version_key, version) in &poem.versions {
+						if version.language.as_deref() == Some(language) {
 							filtered_with_versions.push((i, version_key.clone()));
 						}
 					}
@@ -221,15 +218,16 @@ impl App {
 	}
 	pub fn get_version_in_language(&self, poem_idx: usize, language: &str) -> (&Version, bool) {
 		let poem = &self.poems[poem_idx];
-		if poem.canonical.language == language {
-			return (&poem.canonical, true);
-		}
-		for version in poem.other_versions.values() {
-			if version.language == language {
+		for version in poem.versions.values() {
+			if version.language.as_deref() == Some(language) {
 				return (version, true);
 			}
 		}
-		(&poem.canonical, false)
+		if let Some(canonical) = poem.canonical() {
+			(canonical, false)
+		} else {
+			panic!("Poem should have at least a canonical version")
+		}
 	}
 	pub fn get_filtered_list_title(&self) -> String {
 		match self.previous_mode {
@@ -310,14 +308,10 @@ impl App {
 							let languages = self.get_sorted_languages();
 							if let Some(language) = languages.get(selected_lang_idx) {
 								let poem = &self.poems[poem_index];
-								if poem.canonical.language == *language {
-									self.current_version = "canonical".to_string();
-								} else {
-									for (version_key, version) in &poem.other_versions {
-										if version.language == *language {
-											self.current_version = version_key.clone();
-											break;
-										}
+								for (version_key, version) in &poem.versions {
+									if version.language.as_deref() == Some(language) {
+										self.current_version = version_key.clone();
+										break;
 									}
 								}
 							}
@@ -341,8 +335,14 @@ impl App {
 			self.search_list_state.select(None);
 		} else {
 			self.search_results = self.poems.iter().enumerate().filter_map(|(i, poem)| {
-				if poem.canonical.title.to_lowercase().contains(&query) || poem.canonical.author.to_lowercase().contains(&query) {
-					Some(i)
+				if let Some(canonical) = poem.canonical() {
+					let title_match = canonical.title.as_ref().map_or(false, |t| t.to_lowercase().contains(&query));
+					let author_match = canonical.author.as_ref().map_or(false, |a| a.to_lowercase().contains(&query));
+					if title_match || author_match {
+						Some(i)
+					} else {
+						None
+					}
 				} else {
 					None
 				}
