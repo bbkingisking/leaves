@@ -11,7 +11,7 @@ use crossterm::{
 use ratatui::{
 	Terminal,
 	widgets::{Block, Borders, Paragraph, List, ListItem, Scrollbar, ScrollbarOrientation, ScrollbarState, Clear},
-	layout::{Constraint, Direction, Layout},
+	layout::{Constraint, Direction, Layout, Rect},
 	style::{Style, Color},
 	text::{Line, Span},
 };
@@ -116,50 +116,133 @@ fn main() -> Result<(), io::Error> {
 					let total_lines = poem_text.lines().count();
 					let max_scroll = total_lines.saturating_sub(viewport_height) as u16;
 					let scroll_offset = app.scroll_position.min(max_scroll);
-					let title = Line::from(vec![
-						Span::raw(" "),
-						Span::styled(version.author.as_deref().unwrap_or("Unknown"), Style::default().fg(Color::Yellow)),
-						Span::raw(" - "),
-						Span::styled(version.title.as_deref().unwrap_or("Untitled"), Style::default().fg(Color::Yellow)),
-						Span::raw(" ")
-					]);
-					let poem_block = Block::default().title(title).borders(Borders::ALL);
-					let inner_area = poem_block.inner(chunks[0]);
-					let content_chunks = Layout::default()
-						.direction(Direction::Horizontal)
-						.constraints([Constraint::Min(1), Constraint::Length(1)].as_ref())
-						.split(inner_area);
-					let actual_viewport_height = content_chunks[0].height as usize;
-					let max_width = content_chunks[0].width as usize;
-					let options = textwrap::Options::new(max_width)
-						.subsequent_indent("  ");
-					let wrapped_text: String = poem_text.lines()
-						.map(|line| {
-							if line.trim().is_empty() {
-								String::new()
-							} else {
-								textwrap::fill(line, options.clone())
+
+					// Check if we're in vertical + RTL mode for special title handling
+					let is_vertical_rtl = version.vertical.unwrap_or(false) && version.rtl.unwrap_or(false);
+					
+					if is_vertical_rtl {
+						// For vertical RTL: display title/author overlapping right border
+						// Adjust the poem block area to leave space for vertical title on right
+						let adjusted_area = Rect {
+							x: chunks[0].x,
+							y: chunks[0].y,
+							width: chunks[0].width.saturating_sub(2), // Make room for vertical title (2 chars for full-width)
+							height: chunks[0].height,
+						};
+						let poem_block = Block::default().borders(Borders::ALL);
+						let inner_area = poem_block.inner(adjusted_area);
+						let content_chunks = Layout::default()
+							.direction(Direction::Horizontal)
+							.constraints([Constraint::Min(1), Constraint::Length(1)].as_ref())
+							.split(inner_area);
+						
+						let actual_viewport_height = content_chunks[0].height as usize;
+						let max_width = content_chunks[0].width as usize;
+						let options = textwrap::Options::new(max_width)
+							.subsequent_indent("  ");
+						let wrapped_text: String = poem_text.lines()
+							.map(|line| {
+								if line.trim().is_empty() {
+									String::new()
+								} else {
+									textwrap::fill(line, options.clone())
+								}
+							})
+							.collect::<Vec<_>>()
+							.join("\n");
+						
+						// Render poem content
+						let poem_para = Paragraph::new(wrapped_text)
+							.style(Style::default().fg(Color::White))
+							.alignment(alignment)
+							.scroll((scroll_offset, 0));
+						f.render_widget(poem_block.clone(), adjusted_area);
+						f.render_widget(poem_para, content_chunks[0]);
+						
+						// Render vertical title overlapping the right border
+						let author = version.author.as_deref().unwrap_or("Unknown");
+						let title = version.title.as_deref().unwrap_or("Untitled");
+						let vertical_title_text = ui::render_vertical_rtl_title(author, title);
+						let title_lines: Vec<&str> = vertical_title_text.lines().collect();
+						
+						// Position title to start at top in the space we made
+						let title_start_y = chunks[0].y + 1; // Start at top, just below the top border
+						let title_x = chunks[0].x + chunks[0].width - 3; // Position to interrupt the border
+						
+						for (i, line) in title_lines.iter().enumerate() {
+							if (title_start_y + i as u16) < (chunks[0].y + chunks[0].height - 1) {
+								let title_area = Rect {
+									x: title_x,
+									y: title_start_y + i as u16,
+									width: 2,
+									height: 1,
+								};
+								let char_para = Paragraph::new(*line)
+									.style(Style::default().fg(Color::Yellow));
+								f.render_widget(char_para, title_area);
 							}
-						})
-						.collect::<Vec<_>>()
-						.join("\n");
-					let poem_para = Paragraph::new(wrapped_text)
-						.style(Style::default().fg(Color::White))
-						.alignment(alignment)
-						.scroll((scroll_offset, 0));
-					f.render_widget(poem_block.clone(), chunks[0]);
-					f.render_widget(poem_para, content_chunks[0]);
-					if total_lines > actual_viewport_height {
-						let content_length = total_lines.saturating_sub(actual_viewport_height).saturating_add(1);
-						let mut scrollbar_state = ScrollbarState::new(content_length)
-							.position(app.scroll_position as usize)
-							.viewport_content_length(actual_viewport_height);
-						let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
-							.begin_symbol(Some("▲"))
-							.end_symbol(Some("▼"))
-							.thumb_symbol("▐")
-							.track_symbol(Some("│"));
-						f.render_stateful_widget(scrollbar, content_chunks[1], &mut scrollbar_state);
+						}
+						
+						// Render scrollbar if needed - position it in the original area
+						if total_lines > actual_viewport_height {
+							let content_length = total_lines.saturating_sub(actual_viewport_height).saturating_add(1);
+							let mut scrollbar_state = ScrollbarState::new(content_length)
+								.position(app.scroll_position as usize)
+								.viewport_content_length(actual_viewport_height);
+							let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
+								.begin_symbol(Some("▲"))
+								.end_symbol(Some("▼"))
+								.thumb_symbol("▐")
+								.track_symbol(Some("│"));
+							f.render_stateful_widget(scrollbar, content_chunks[1], &mut scrollbar_state);
+						}
+					} else {
+						// Normal mode: title on top as before
+						let title = Line::from(vec![
+							Span::raw(" "),
+							Span::styled(version.author.as_deref().unwrap_or("Unknown"), Style::default().fg(Color::Yellow)),
+							Span::raw(" - "),
+							Span::styled(version.title.as_deref().unwrap_or("Untitled"), Style::default().fg(Color::Yellow)),
+							Span::raw(" ")
+						]);
+						let poem_block = Block::default().title(title).borders(Borders::ALL);
+						let inner_area = poem_block.inner(chunks[0]);
+						let content_chunks = Layout::default()
+							.direction(Direction::Horizontal)
+							.constraints([Constraint::Min(1), Constraint::Length(1)].as_ref())
+							.split(inner_area);
+						let actual_viewport_height = content_chunks[0].height as usize;
+						let max_width = content_chunks[0].width as usize;
+						let options = textwrap::Options::new(max_width)
+							.subsequent_indent("  ");
+						let wrapped_text: String = poem_text.lines()
+							.map(|line| {
+								if line.trim().is_empty() {
+									String::new()
+								} else {
+									textwrap::fill(line, options.clone())
+								}
+							})
+							.collect::<Vec<_>>()
+							.join("\n");
+						let poem_para = Paragraph::new(wrapped_text)
+							.style(Style::default().fg(Color::White))
+							.alignment(alignment)
+							.scroll((scroll_offset, 0));
+						f.render_widget(poem_block.clone(), chunks[0]);
+						f.render_widget(poem_para, content_chunks[0]);
+						if total_lines > actual_viewport_height {
+							let content_length = total_lines.saturating_sub(actual_viewport_height).saturating_add(1);
+							let mut scrollbar_state = ScrollbarState::new(content_length)
+								.position(app.scroll_position as usize)
+								.viewport_content_length(actual_viewport_height);
+							let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
+								.begin_symbol(Some("▲"))
+								.end_symbol(Some("▼"))
+								.thumb_symbol("▐")
+								.track_symbol(Some("│"));
+							f.render_stateful_widget(scrollbar, content_chunks[1], &mut scrollbar_state);
+						}
 					}
 				},
 				app::AppMode::Menu => {

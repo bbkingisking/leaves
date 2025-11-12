@@ -172,6 +172,16 @@ fn process_rtl_text(text: &str) -> String {
 		.join("\n")
 }
 
+pub fn render_vertical_rtl_title(author: &str, title: &str) -> String {
+	// Create vertical text that reads from top to bottom for RTL mode
+	// Format: "Author - Title" but displayed vertically
+	let full_text = format!("{}|{}", author, title);
+
+	// Convert to vertical text (each character on its own line)
+	// Don't skip any characters, including spaces
+	full_text.chars().map(|c| c.to_string()).collect::<Vec<String>>().join("\n")
+}
+
 pub fn popup_area(area: Rect, width_percent: u16, height_percent: u16) -> Rect {
 	let popup_layout = Layout::default()
 		.direction(Direction::Vertical)
